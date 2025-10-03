@@ -25,6 +25,7 @@ function json_pointer_segments(pointer::AbstractString)
 end
 
 const LEAF_FIELD = :leaf
+const POINTER_FIELD = :pointer
 
 escape_json_pointer_segment(segment::AbstractString) = replace(replace(String(segment), "~" => "~0"), "/" => "~1")
 
@@ -32,6 +33,22 @@ function pointer_from_segments(segments::AbstractVector{<:AbstractString})
     isempty(segments) && return ""
     escaped = map(escape_json_pointer_segment, segments)
     return "/" * join(escaped, "/")
+end
+
+function sanitize_symbol(segment::AbstractString, used::Set{Symbol})
+    sanitized = String(segment)
+    sanitized = replace(sanitized, r"[^A-Za-z0-9_]" => "_")
+    isempty(sanitized) && (sanitized = "_")
+    Base.isidentifier(sanitized) || (sanitized = "_" * sanitized)
+
+    candidate = Symbol(sanitized)
+    counter = 2
+    while candidate in used
+        candidate = Symbol(sanitized * "_" * string(counter))
+        counter += 1
+    end
+
+    return candidate
 end
 
 """
@@ -122,7 +139,9 @@ function registry_to_namedtuples(registry::AbstractDict{<:AbstractString, <:Func
         node = tree
         for (idx, segment) in enumerate(segments)
             if idx == length(segments)
-                node[segment] = leaf_fn
+                haskey(node, segment) && throw(ArgumentError("Duplicate registry pointer '$pointer'"))
+                leaf_fn isa Function || throw(ArgumentError("Leaf for pointer '$pointer' must be callable"))
+                node[segment] = NamedTuple{(POINTER_FIELD, LEAF_FIELD)}((pointer, leaf_fn))
             else
                 child = get!(node, segment) do
                     Dict{String, Any}()
@@ -139,18 +158,22 @@ end
 
 function tree_to_namedtuple(tree::Dict{String, Any})
     segments = sort!(collect(keys(tree)))
+    used = Set{Symbol}()
     name_syms = Symbol[]
     values = Any[]
 
     for segment in segments
         child = tree[segment]
-        push!(name_syms, Symbol(segment))
+        sym = sanitize_symbol(segment, used)
+        push!(used, sym)
+        push!(name_syms, sym)
         if child isa Dict{String, Any}
             push!(values, tree_to_namedtuple(child))
         elseif child isa Dict
             push!(values, tree_to_namedtuple(Dict{String, Any}(child)))
         else
-            push!(values, (; leaf = child))
+            child isa NamedTuple || throw(ArgumentError("Unexpected node type for segment '$segment'"))
+            push!(values, child)
         end
     end
 
@@ -168,34 +191,34 @@ single field `:leaf` containing a callable.
 """
 function namedtuples_to_registry(hierarchy::NamedTuple)
     registry = Dict{String, Function}()
-    collect_namedtuple_registry!(registry, hierarchy, String[])
+    collect_namedtuple_registry!(registry, hierarchy)
     validate_registry(registry)
     return registry
 end
 
-function collect_namedtuple_registry!(registry::Dict{String, Function}, node::NamedTuple, segments::Vector{String})
+function collect_namedtuple_registry!(registry::Dict{String, Function}, node::NamedTuple)
     props = propertynames(node)
 
-    if props == (LEAF_FIELD,)
-        isempty(segments) && throw(ArgumentError("Leaf nodes must correspond to non-root pointers"))
+    if props == (POINTER_FIELD, LEAF_FIELD)
+        pointer = getfield(node, POINTER_FIELD)
+        pointer isa AbstractString || throw(ArgumentError("Leaf pointers must be strings"))
+        pointer = String(pointer)
+        pointer == "" && throw(ArgumentError("Leaf pointers cannot be empty"))
+        startswith(pointer, "/") || throw(ArgumentError("Leaf pointer '$pointer' must begin with '/'"))
         leaf_fn = getfield(node, LEAF_FIELD)
-        leaf_fn isa Function || throw(ArgumentError("Leaf at pointer '$(pointer_from_segments(segments))' must be callable"))
-        pointer = pointer_from_segments(segments)
+        leaf_fn isa Function || throw(ArgumentError("Leaf at pointer '$pointer' must be callable"))
         registry[pointer] = leaf_fn
         return
     end
 
-    if LEAF_FIELD in props
-        pointer = pointer_from_segments(segments)
-        throw(ArgumentError("Node at pointer '$pointer' cannot contain both leaf and branch data"))
+    if POINTER_FIELD in props || LEAF_FIELD in props
+        throw(ArgumentError("Node containing both metadata and branches is invalid"))
     end
 
     for name in props
         child = getfield(node, name)
-        child isa NamedTuple || throw(ArgumentError("Child '$name' under pointer '$(pointer_from_segments(segments))' must be a NamedTuple"))
-        push!(segments, String(name))
-        collect_namedtuple_registry!(registry, child, segments)
-        pop!(segments)
+        child isa NamedTuple || throw(ArgumentError("Branch children must be NamedTuples"))
+        collect_namedtuple_registry!(registry, child)
     end
 end
 

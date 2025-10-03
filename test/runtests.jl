@@ -106,14 +106,17 @@ end
     @test Set(propertynames(hierarchy)) == Set([:name, :appearance, :stats, :behavior, :commands])
 
     @test hierarchy.name isa NamedTuple
-    @test propertynames(hierarchy.name) == (:leaf,)
+    @test propertynames(hierarchy.name) == (:pointer, :leaf)
+    @test hierarchy.name.pointer == "/name"
     @test hierarchy.name.leaf() == "Whiskers"
 
     appearance = hierarchy.appearance
     @test appearance isa NamedTuple
-    @test Set(propertynames(appearance)) == Set([:color, Symbol("eye-color")])
+    @test Set(propertynames(appearance)) == Set([:color, :eye_color])
+    @test appearance.color.pointer == "/appearance/color"
     @test appearance.color.leaf() == "tabby"
-    @test appearance[Symbol("eye-color")].leaf() == "green"
+    @test appearance.eye_color.pointer == "/appearance/eye-color"
+    @test appearance.eye_color.leaf() == "green"
 
     commands = hierarchy.commands
     @test commands isa NamedTuple
@@ -123,6 +126,16 @@ end
     @test commands.move.come.leaf() == "Here kitty kitty"
     @test commands.sound.speak.leaf() == "Meow"
     @test commands.sound.purr.leaf() == "Purr"
+
+    stats = hierarchy.stats
+    @test Set(propertynames(stats)) == Set([:age, :is_indoor])
+    @test stats.is_indoor.pointer == "/stats/is-indoor"
+    @test stats.is_indoor.leaf() == true
+
+    behavior = hierarchy.behavior
+    @test Set(propertynames(behavior)) == Set([:favorite_toy, :nap_length_minutes])
+    @test behavior.favorite_toy.pointer == "/behavior/favorite-toy"
+    @test behavior.nap_length_minutes.pointer == "/behavior/nap-length-minutes"
 end
 
 @testset "namedtuples_to_registry" begin
@@ -137,9 +150,9 @@ end
         @test regenerated[pointer]() == registry[pointer]()
     end
 
-    invalid_hierarchy = (appearance = (; leaf = () -> "pretty", color = (; leaf = () -> "tabby")),)
+    invalid_hierarchy = (appearance = (; pointer = "/appearance", leaf = () -> "pretty", color = (; pointer = "/appearance/color", leaf = () -> "tabby")),)
     @test_throws ArgumentError namedtuples_to_registry(invalid_hierarchy)
 
-    root_leaf = (; leaf = () -> "root")
+    root_leaf = (; pointer = "", leaf = () -> "root")
     @test_throws ArgumentError namedtuples_to_registry(root_leaf)
 end
