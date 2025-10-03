@@ -1,6 +1,11 @@
 module REPLTrees
 
-export json_pointer_segments, example_cat_registry, registry_branches, validate_registry
+export json_pointer_segments,
+       registry_branches,
+       validate_registry,
+       example_cat_registry,
+       registry_to_namedtuples,
+       namedtuples_to_registry
 
 """
     json_pointer_segments(pointer::AbstractString) -> Vector{String}
@@ -19,6 +24,16 @@ function json_pointer_segments(pointer::AbstractString)
     return [String(replace(segment, "~0" => "~", "~1" => "/")) for segment in raw_segments]
 end
 
+const LEAF_FIELD = :leaf
+
+escape_json_pointer_segment(segment::AbstractString) = replace(replace(String(segment), "~" => "~0"), "/" => "~1")
+
+function pointer_from_segments(segments::AbstractVector{<:AbstractString})
+    isempty(segments) && return ""
+    escaped = map(escape_json_pointer_segment, segments)
+    return "/" * join(escaped, "/")
+end
+
 """
     registry_branches(registry::AbstractDict{<:AbstractString}) -> Vector{String}
 
@@ -32,7 +47,7 @@ function registry_branches(registry::AbstractDict{<:AbstractString})
     for pointer in keys(registry)
         segments = json_pointer_segments(pointer)
         for i in 1:length(segments)-1
-            prefix = "/" * join(segments[1:i], "/")
+            prefix = pointer_from_segments(segments[1:i])
             push!(branches, prefix)
         end
     end
@@ -85,6 +100,103 @@ function example_cat_registry()
     )
     validate_registry(registry)
     return registry
+end
+
+"""
+    registry_to_namedtuples(registry::AbstractDict{<:AbstractString, <:Function}) -> NamedTuple
+
+Convert a registry of JSON Pointer leaf callables into a nested hierarchy
+of NamedTuples. Branch nodes are NamedTuples whose fields correspond to
+child segment names. Leaf nodes are NamedTuples with a single field
+`:leaf` holding the callable.
+"""
+function registry_to_namedtuples(registry::AbstractDict{<:AbstractString, <:Function})
+    validate_registry(registry)
+
+    tree = Dict{String, Any}()
+
+    for (pointer, leaf_fn) in registry
+        segments = json_pointer_segments(pointer)
+        isempty(segments) && throw(ArgumentError("Registry cannot contain root leaf pointer"))
+
+        node = tree
+        for (idx, segment) in enumerate(segments)
+            if idx == length(segments)
+                node[segment] = leaf_fn
+            else
+                child = get!(node, segment) do
+                    Dict{String, Any}()
+                end
+
+                child isa Dict || throw(ArgumentError("Registry pointer '$pointer' conflicts with existing leaf"))
+                node = child
+            end
+        end
+    end
+
+    return tree_to_namedtuple(tree)
+end
+
+function tree_to_namedtuple(tree::Dict{String, Any})
+    segments = sort!(collect(keys(tree)))
+    name_syms = Symbol[]
+    values = Any[]
+
+    for segment in segments
+        child = tree[segment]
+        push!(name_syms, Symbol(segment))
+        if child isa Dict{String, Any}
+            push!(values, tree_to_namedtuple(child))
+        elseif child isa Dict
+            push!(values, tree_to_namedtuple(Dict{String, Any}(child)))
+        else
+            push!(values, (; leaf = child))
+        end
+    end
+
+    names_tuple = Tuple(name_syms)
+    values_tuple = Tuple(values)
+    return NamedTuple{names_tuple}(values_tuple)
+end
+
+"""
+    namedtuples_to_registry(hierarchy::NamedTuple) -> Dict{String, Function}
+
+Convert a hierarchy of branch and leaf NamedTuples back into a registry
+dictionary keyed by JSON Pointers. Leaf nodes must be NamedTuples with a
+single field `:leaf` containing a callable.
+"""
+function namedtuples_to_registry(hierarchy::NamedTuple)
+    registry = Dict{String, Function}()
+    collect_namedtuple_registry!(registry, hierarchy, String[])
+    validate_registry(registry)
+    return registry
+end
+
+function collect_namedtuple_registry!(registry::Dict{String, Function}, node::NamedTuple, segments::Vector{String})
+    props = propertynames(node)
+
+    if props == (LEAF_FIELD,)
+        isempty(segments) && throw(ArgumentError("Leaf nodes must correspond to non-root pointers"))
+        leaf_fn = getfield(node, LEAF_FIELD)
+        leaf_fn isa Function || throw(ArgumentError("Leaf at pointer '$(pointer_from_segments(segments))' must be callable"))
+        pointer = pointer_from_segments(segments)
+        registry[pointer] = leaf_fn
+        return
+    end
+
+    if LEAF_FIELD in props
+        pointer = pointer_from_segments(segments)
+        throw(ArgumentError("Node at pointer '$pointer' cannot contain both leaf and branch data"))
+    end
+
+    for name in props
+        child = getfield(node, name)
+        child isa NamedTuple || throw(ArgumentError("Child '$name' under pointer '$(pointer_from_segments(segments))' must be a NamedTuple"))
+        push!(segments, String(name))
+        collect_namedtuple_registry!(registry, child, segments)
+        pop!(segments)
+    end
 end
 
 end # module

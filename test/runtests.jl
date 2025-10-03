@@ -25,6 +25,11 @@ end
         "/stats/is-indoor",
         "/behavior/favorite-toy",
         "/behavior/nap-length-minutes",
+        "/commands/move/stay",
+        "/commands/move/come",
+        "/commands/sound/speak",
+        "/commands/sound/hiss",
+        "/commands/sound/purr",
     ])
 
     @test Set(keys(registry)) == expected_keys
@@ -49,6 +54,9 @@ end
         "/appearance",
         "/behavior",
         "/stats",
+        "/commands",
+        "/commands/move",
+        "/commands/sound",
     ])
 end
 
@@ -58,6 +66,8 @@ end
         "/a/d" => () -> 2,
         "/e" => () -> 3,
         "/f//g" => () -> 4,
+        "/foo~1bar/baz" => () -> 5,
+        "/tilde~0branch/sub" => () -> 6,
     )
 
     expected = Set([
@@ -65,6 +75,8 @@ end
         "/a/b",
         "/f",
         "/f/",
+        "/foo~1bar",
+        "/tilde~0branch",
     ])
 
     @test Set(registry_branches(registry)) == expected
@@ -84,4 +96,50 @@ end
     )
 
     @test_throws ArgumentError validate_registry(invalid_registry)
+end
+
+@testset "registry_to_namedtuples" begin
+    registry = example_cat_registry()
+    hierarchy = registry_to_namedtuples(registry)
+
+    @test hierarchy isa NamedTuple
+    @test Set(propertynames(hierarchy)) == Set([:name, :appearance, :stats, :behavior, :commands])
+
+    @test hierarchy.name isa NamedTuple
+    @test propertynames(hierarchy.name) == (:leaf,)
+    @test hierarchy.name.leaf() == "Whiskers"
+
+    appearance = hierarchy.appearance
+    @test appearance isa NamedTuple
+    @test Set(propertynames(appearance)) == Set([:color, Symbol("eye-color")])
+    @test appearance.color.leaf() == "tabby"
+    @test appearance[Symbol("eye-color")].leaf() == "green"
+
+    commands = hierarchy.commands
+    @test commands isa NamedTuple
+    @test Set(propertynames(commands)) == Set([:move, :sound])
+    @test commands.move isa NamedTuple
+    @test commands.move.stay.leaf() == "Don't move"
+    @test commands.move.come.leaf() == "Here kitty kitty"
+    @test commands.sound.speak.leaf() == "Meow"
+    @test commands.sound.purr.leaf() == "Purr"
+end
+
+@testset "namedtuples_to_registry" begin
+    registry = example_cat_registry()
+    hierarchy = registry_to_namedtuples(registry)
+    regenerated = namedtuples_to_registry(hierarchy)
+
+    @test regenerated isa Dict{String, Function}
+    @test Set(keys(regenerated)) == Set(keys(registry))
+
+    for pointer in keys(registry)
+        @test regenerated[pointer]() == registry[pointer]()
+    end
+
+    invalid_hierarchy = (appearance = (; leaf = () -> "pretty", color = (; leaf = () -> "tabby")),)
+    @test_throws ArgumentError namedtuples_to_registry(invalid_hierarchy)
+
+    root_leaf = (; leaf = () -> "root")
+    @test_throws ArgumentError namedtuples_to_registry(root_leaf)
 end
