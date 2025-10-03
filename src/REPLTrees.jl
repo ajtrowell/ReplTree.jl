@@ -77,6 +77,11 @@ function example_cat_registry()
         "/stats/is-indoor" => () -> true,
         "/behavior/favorite-toy" => () -> "feather wand",
         "/behavior/nap-length-minutes" => () -> 25,
+        "/commands/move/stay" => () -> "Don't move",
+        "/commands/move/come" => () -> "Here kitty kitty",
+        "/commands/sound/speak" => () -> "Meow",
+        "/commands/sound/hiss" => () -> "Hiss!",
+        "/commands/sound/purr" => () -> "Purr",
     )
     validate_registry(registry)
     return registry
