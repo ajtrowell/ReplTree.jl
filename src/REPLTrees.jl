@@ -1,6 +1,6 @@
 module REPLTrees
 
-export json_pointer_segments, example_cat_registry
+export json_pointer_segments, example_cat_registry, registry_branches, validate_registry
 
 """
     json_pointer_segments(pointer::AbstractString) -> Vector{String}
@@ -20,6 +20,46 @@ function json_pointer_segments(pointer::AbstractString)
 end
 
 """
+    registry_branches(registry::AbstractDict{<:AbstractString}) -> Vector{String}
+
+Return the distinct JSON Pointer prefixes that represent branches leading
+to leaves in the registry. Branches themselves are not leaves (i.e.,
+they are strict prefixes).
+"""
+function registry_branches(registry::AbstractDict{<:AbstractString})
+    branches = Set{String}()
+
+    for pointer in keys(registry)
+        segments = json_pointer_segments(pointer)
+        for i in 1:length(segments)-1
+            prefix = "/" * join(segments[1:i], "/")
+            push!(branches, prefix)
+        end
+    end
+
+    return sort!(collect(branches))
+end
+
+"""
+    validate_registry(registry::AbstractDict{<:AbstractString})
+
+Ensure that no registry leaf pointer is also used as a branch. Throws an
+`ArgumentError` when a conflict is found.
+"""
+function validate_registry(registry::AbstractDict{<:AbstractString})
+    branch_list = registry_branches(registry)
+    leaf_set = Set(keys(registry))
+
+    for branch in branch_list
+        if branch in leaf_set
+            throw(ArgumentError("Registry pointer '$branch' cannot be both a leaf and a branch"))
+        end
+    end
+
+    return nothing
+end
+
+"""
     example_cat_registry() -> Dict{String, Function}
 
 Return a dictionary describing leaf values for a sample cat registry.
@@ -29,7 +69,7 @@ zero-argument callables producing the associated leaf data. Branches are
 not represented in the dictionary.
 """
 function example_cat_registry()
-    return Dict{String, Function}(
+    registry = Dict{String, Function}(
         "/name" => () -> "Whiskers",
         "/appearance/color" => () -> "tabby",
         "/appearance/eye-color" => () -> "green",
@@ -38,6 +78,8 @@ function example_cat_registry()
         "/behavior/favorite-toy" => () -> "feather wand",
         "/behavior/nap-length-minutes" => () -> 25,
     )
+    validate_registry(registry)
+    return registry
 end
 
 end # module

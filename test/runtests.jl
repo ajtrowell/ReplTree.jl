@@ -43,4 +43,45 @@ end
         @test leaf_fn isa Function
         @test !isempty(json_pointer_segments(pointer))
     end
+
+    branches = registry_branches(registry)
+    @test Set(branches) == Set([
+        "/appearance",
+        "/behavior",
+        "/stats",
+    ])
+end
+
+@testset "registry_branches" begin
+    registry = Dict(
+        "/a/b/c" => () -> 1,
+        "/a/d" => () -> 2,
+        "/e" => () -> 3,
+        "/f//g" => () -> 4,
+    )
+
+    expected = Set([
+        "/a",
+        "/a/b",
+        "/f",
+        "/f/",
+    ])
+
+    @test Set(registry_branches(registry)) == expected
+end
+
+@testset "validate_registry" begin
+    valid_registry = Dict(
+        "/appearance/color" => () -> "tabby",
+        "/appearance/pattern" => () -> "striped",
+    )
+
+    @test validate_registry(valid_registry) === nothing
+
+    invalid_registry = Dict(
+        "/appearance" => () -> "pretty",
+        "/appearance/color" => () -> "tabby",
+    )
+
+    @test_throws ArgumentError validate_registry(invalid_registry)
 end
