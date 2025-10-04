@@ -5,7 +5,11 @@ export json_pointer_segments,
        validate_registry,
        example_cat_registry,
        registry_to_namedtuples,
-       namedtuples_to_registry
+       namedtuples_to_registry,
+       MenuBranch,
+       MenuLeaf,
+       registry_to_menu,
+       menu_to_registry
 
 """
     json_pointer_segments(pointer::AbstractString) -> Vector{String}
@@ -91,6 +95,33 @@ function validate_registry(registry::AbstractDict{<:AbstractString})
     return nothing
 end
 
+function build_registry_tree(registry::AbstractDict{<:AbstractString, <:Function})
+    tree = Dict{String, Any}()
+
+    for (pointer, leaf_fn) in registry
+        segments = json_pointer_segments(pointer)
+        isempty(segments) && throw(ArgumentError("Registry cannot contain root leaf pointer"))
+        leaf_fn isa Function || throw(ArgumentError("Leaf for pointer '$pointer' must be callable"))
+
+        node = tree
+        for (idx, segment) in enumerate(segments)
+            if idx == length(segments)
+                haskey(node, segment) && throw(ArgumentError("Duplicate registry pointer '$pointer'"))
+                node[segment] = leaf_fn
+            else
+                child = get!(node, segment) do
+                    Dict{String, Any}()
+                end
+
+                child isa Dict || throw(ArgumentError("Registry pointer '$pointer' conflicts with existing leaf"))
+                node = child
+            end
+        end
+    end
+
+    return tree
+end
+
 """
     example_cat_registry() -> Dict{String, Function}
 
@@ -129,51 +160,31 @@ child segment names. Leaf nodes are NamedTuples with a single field
 """
 function registry_to_namedtuples(registry::AbstractDict{<:AbstractString, <:Function})
     validate_registry(registry)
-
-    tree = Dict{String, Any}()
-
-    for (pointer, leaf_fn) in registry
-        segments = json_pointer_segments(pointer)
-        isempty(segments) && throw(ArgumentError("Registry cannot contain root leaf pointer"))
-
-        node = tree
-        for (idx, segment) in enumerate(segments)
-            if idx == length(segments)
-                haskey(node, segment) && throw(ArgumentError("Duplicate registry pointer '$pointer'"))
-                leaf_fn isa Function || throw(ArgumentError("Leaf for pointer '$pointer' must be callable"))
-                node[segment] = NamedTuple{(POINTER_FIELD, LEAF_FIELD)}((pointer, leaf_fn))
-            else
-                child = get!(node, segment) do
-                    Dict{String, Any}()
-                end
-
-                child isa Dict || throw(ArgumentError("Registry pointer '$pointer' conflicts with existing leaf"))
-                node = child
-            end
-        end
-    end
-
-    return tree_to_namedtuple(tree)
+    tree = build_registry_tree(registry)
+    return tree_to_namedtuple(tree, String[])
 end
 
-function tree_to_namedtuple(tree::Dict{String, Any})
-    segments = sort!(collect(keys(tree)))
+function tree_to_namedtuple(tree::Dict{String, Any}, path::Vector{String})
+    sorted_segments = sort!(collect(keys(tree)))
     used = Set{Symbol}()
     name_syms = Symbol[]
     values = Any[]
 
-    for segment in segments
+    for segment in sorted_segments
         child = tree[segment]
         sym = sanitize_symbol(segment, used)
         push!(used, sym)
         push!(name_syms, sym)
+        child_path = copy(path)
+        push!(child_path, segment)
         if child isa Dict{String, Any}
-            push!(values, tree_to_namedtuple(child))
+            push!(values, tree_to_namedtuple(child, child_path))
         elseif child isa Dict
-            push!(values, tree_to_namedtuple(Dict{String, Any}(child)))
+            push!(values, tree_to_namedtuple(Dict{String, Any}(child), child_path))
         else
-            child isa NamedTuple || throw(ArgumentError("Unexpected node type for segment '$segment'"))
-            push!(values, child)
+            child isa Function || throw(ArgumentError("Unexpected leaf type for segment '$segment'"))
+            pointer = pointer_from_segments(child_path)
+            push!(values, NamedTuple{(POINTER_FIELD, LEAF_FIELD)}((pointer, child)))
         end
     end
 
@@ -219,6 +230,121 @@ function collect_namedtuple_registry!(registry::Dict{String, Function}, node::Na
         child = getfield(node, name)
         child isa NamedTuple || throw(ArgumentError("Branch children must be NamedTuples"))
         collect_namedtuple_registry!(registry, child)
+    end
+end
+
+struct MenuLeaf{F}
+    pointer::String
+    value::F
+end
+
+function (leaf::MenuLeaf)(args...; kwargs...)
+    val = leaf.value
+    if val isa Function
+        return val(args...; kwargs...)
+    end
+    throw(ArgumentError("Leaf at pointer '$(leaf.pointer)' is not callable"))
+end
+
+Base.show(io::IO, leaf::MenuLeaf) = print(io, "MenuLeaf(", leaf.pointer, ")")
+
+struct MenuBranch
+    pointer::String
+    order::Vector{Symbol}
+    children::Dict{Symbol, Any}
+    segment_lookup::Dict{Symbol, String}
+end
+
+const MenuNode = Union{MenuBranch, MenuLeaf}
+
+function Base.propertynames(branch::MenuBranch, private::Bool=false)
+    if private
+        return (fieldnames(MenuBranch)...,)
+    end
+    return Tuple(branch.order)
+end
+
+function Base.getproperty(branch::MenuBranch, name::Symbol)
+    if name === :pointer || name === :order || name === :children || name === :segment_lookup
+        return getfield(branch, name)
+    end
+    if haskey(branch.children, name)
+        return branch.children[name]
+    end
+    return getfield(branch, name)
+end
+
+function Base.show(io::IO, branch::MenuBranch)
+    pointer = isempty(branch.pointer) ? "/" : branch.pointer
+    choices = [branch.segment_lookup[sym] for sym in branch.order]
+    print(io, "MenuBranch(", pointer, "; choices=[", join(choices, ", "), "])")
+end
+
+"""
+    registry_to_menu(registry::AbstractDict{<:AbstractString, <:Function}) -> MenuBranch
+
+Render a registry of JSON Pointer callables into a hierarchy of
+`MenuBranch` and `MenuLeaf` nodes optimised for REPL exploration.
+"""
+function registry_to_menu(registry::AbstractDict{<:AbstractString, <:Function})
+    validate_registry(registry)
+    tree = build_registry_tree(registry)
+    return tree_to_menu_branch(tree, String[])
+end
+
+function tree_to_menu_branch(tree::Dict{String, Any}, path::Vector{String})
+    branch_pointer = pointer_from_segments(path)
+    sorted_segments = sort!(collect(keys(tree)))
+    reserved = Set(fieldnames(MenuBranch))
+    used = copy(reserved)
+    order = Symbol[]
+    children = Dict{Symbol, Any}()
+    segment_lookup = Dict{Symbol, String}()
+
+    for segment in sorted_segments
+        sym = sanitize_symbol(segment, used)
+        push!(used, sym)
+        push!(order, sym)
+        segment_lookup[sym] = segment
+        child = tree[segment]
+        child_path = copy(path)
+        push!(child_path, segment)
+        if child isa Dict{String, Any}
+            children[sym] = tree_to_menu_branch(child, child_path)
+        elseif child isa Dict
+            children[sym] = tree_to_menu_branch(Dict{String, Any}(child), child_path)
+        else
+            child isa Function || throw(ArgumentError("Leaf for pointer '$(pointer_from_segments(child_path))' must be callable"))
+            children[sym] = MenuLeaf(pointer_from_segments(child_path), child)
+        end
+    end
+
+    return MenuBranch(branch_pointer, order, children, segment_lookup)
+end
+
+"""
+    menu_to_registry(menu::MenuBranch) -> Dict{String, Function}
+
+Collapse a `MenuBranch` hierarchy back into the flat registry mapping
+JSON Pointer strings to callables.
+"""
+function menu_to_registry(menu::MenuBranch)
+    registry = Dict{String, Function}()
+    collect_menu_registry!(registry, menu)
+    validate_registry(registry)
+    return registry
+end
+
+function collect_menu_registry!(registry::Dict{String, Function}, leaf::MenuLeaf)
+    val = leaf.value
+    val isa Function || throw(ArgumentError("Leaf at pointer '$(leaf.pointer)' must be callable"))
+    registry[leaf.pointer] = val
+end
+
+function collect_menu_registry!(registry::Dict{String, Function}, branch::MenuBranch)
+    for name in branch.order
+        child = branch.children[name]
+        collect_menu_registry!(registry, child)
     end
 end
 

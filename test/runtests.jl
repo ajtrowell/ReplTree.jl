@@ -156,3 +156,45 @@ end
     root_leaf = (; pointer = "", leaf = () -> "root")
     @test_throws ArgumentError namedtuples_to_registry(root_leaf)
 end
+
+@testset "menu_rendering" begin
+    registry = example_cat_registry()
+    menu = registry_to_menu(registry)
+
+    @test menu isa MenuBranch
+    @test menu.pointer == ""
+    @test Set(propertynames(menu)) == Set([:name, :appearance, :stats, :behavior, :commands])
+
+    stats_branch = menu.stats
+    @test stats_branch isa MenuBranch
+    @test stats_branch.pointer == "/stats"
+    @test Set(propertynames(stats_branch)) == Set([:age, :is_indoor])
+
+    indoor_leaf = stats_branch.is_indoor
+    @test indoor_leaf isa MenuLeaf
+    @test indoor_leaf.pointer == "/stats/is-indoor"
+    @test indoor_leaf()
+
+    sound_branch = menu.commands.sound
+    @test sound_branch isa MenuBranch
+    @test sound_branch.pointer == "/commands/sound"
+    @test sound_branch.purr() == "Purr"
+    @test sound_branch.hiss() == "Hiss!"
+
+    appearance_branch = menu.appearance
+    @test appearance_branch.color() == "tabby"
+    @test appearance_branch.eye_color() == "green"
+
+    branch_display = sprint(show, stats_branch)
+    @test occursin("MenuBranch(/stats; choices=[age, is-indoor])", branch_display)
+
+    leaf_display = sprint(show, indoor_leaf)
+    @test occursin("MenuLeaf(/stats/is-indoor)", leaf_display)
+
+    regenerated = menu_to_registry(menu)
+    @test Set(keys(regenerated)) == Set(keys(registry))
+
+    for pointer in keys(registry)
+        @test regenerated[pointer]() == registry[pointer]()
+    end
+end
