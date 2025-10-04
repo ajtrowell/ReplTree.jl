@@ -186,7 +186,7 @@ end
     @test appearance_branch.eye_color() == "green"
 
     branch_display = sprint(show, stats_branch)
-    @test occursin("MenuBranch(/stats; choices=[age, is-indoor])", branch_display)
+    @test occursin("MenuBranch(/stats; choices=[age(), is-indoor()])", branch_display)
 
     leaf_display = sprint(show, indoor_leaf)
     @test occursin("MenuLeaf(/stats/is-indoor)", leaf_display)
@@ -197,4 +197,14 @@ end
     for pointer in keys(registry)
         @test regenerated[pointer]() == registry[pointer]()
     end
+
+    config = Dict(:volume => 10)
+    config_leaf = MenuLeaf("/settings/config", config)
+    @test config_leaf() === config
+    @test_throws ArgumentError config_leaf(1)
+
+    config_branch = MenuBranch("/settings", [:config], Dict(:config => config_leaf), Dict(:config => "config"))
+    config_display = sprint(show, config_branch)
+    @test occursin("choices=[config]", config_display)
+    @test_throws ArgumentError menu_to_registry(config_branch)
 end

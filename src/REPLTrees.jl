@@ -233,17 +233,22 @@ function collect_namedtuple_registry!(registry::Dict{String, Function}, node::Na
     end
 end
 
-struct MenuLeaf{F}
+struct MenuLeaf{V}
     pointer::String
-    value::F
+    value::V
 end
+
+is_leaf_callable(leaf::MenuLeaf) = leaf.value isa Function
 
 function (leaf::MenuLeaf)(args...; kwargs...)
     val = leaf.value
     if val isa Function
         return val(args...; kwargs...)
+    elseif isempty(args) && isempty(kwargs)
+        return val
+    else
+        throw(ArgumentError("Leaf at pointer '$(leaf.pointer)' is not callable"))
     end
-    throw(ArgumentError("Leaf at pointer '$(leaf.pointer)' is not callable"))
 end
 
 Base.show(io::IO, leaf::MenuLeaf) = print(io, "MenuLeaf(", leaf.pointer, ")")
@@ -276,7 +281,15 @@ end
 
 function Base.show(io::IO, branch::MenuBranch)
     pointer = isempty(branch.pointer) ? "/" : branch.pointer
-    choices = [branch.segment_lookup[sym] for sym in branch.order]
+    choices = map(branch.order) do sym
+        label = branch.segment_lookup[sym]
+        child = branch.children[sym]
+        if child isa MenuLeaf && is_leaf_callable(child)
+            return string(label, "()")
+        else
+            return label
+        end
+    end
     print(io, "MenuBranch(", pointer, "; choices=[", join(choices, ", "), "])")
 end
 
@@ -337,7 +350,7 @@ end
 
 function collect_menu_registry!(registry::Dict{String, Function}, leaf::MenuLeaf)
     val = leaf.value
-    val isa Function || throw(ArgumentError("Leaf at pointer '$(leaf.pointer)' must be callable"))
+    is_leaf_callable(leaf) || throw(ArgumentError("Leaf at pointer '$(leaf.pointer)' must be callable"))
     registry[leaf.pointer] = val
 end
 
