@@ -96,19 +96,21 @@ function validate_registry(registry::AbstractDict{<:AbstractString})
     return nothing
 end
 
-function build_registry_tree(registry::AbstractDict{<:AbstractString, <:Function})
+function build_registry_tree(registry::AbstractDict{<:AbstractString}; require_callable::Bool=true)
     tree = Dict{String, Any}()
 
-    for (pointer, leaf_fn) in registry
+    for (pointer, leaf_value) in registry
         segments = json_pointer_segments(pointer)
         isempty(segments) && throw(ArgumentError("Registry cannot contain root leaf pointer"))
-        leaf_fn isa Function || throw(ArgumentError("Leaf for pointer '$pointer' must be callable"))
+        if require_callable && !(leaf_value isa Function)
+            throw(ArgumentError("Leaf for pointer '$pointer' must be callable"))
+        end
 
         node = tree
         for (idx, segment) in enumerate(segments)
             if idx == length(segments)
                 haskey(node, segment) && throw(ArgumentError("Duplicate registry pointer '$pointer'"))
-                node[segment] = leaf_fn
+                node[segment] = leaf_value
             else
                 child = get!(node, segment) do
                     Dict{String, Any}()
@@ -161,10 +163,9 @@ registry.
 """
 @kwdef mutable struct KitchenConfig
     stove_elements::Integer = 4
-    stove_elements_in_use::Integer = 0
     oven_bays::Integer = 1
-    oven_bays_in_use::Integer = 0
     items_cooked::Integer = 0
+    stove::Vector{Any} = []
 end
 
 """
@@ -188,9 +189,17 @@ function example_kitchen_registry()
         "/show_config" => () -> show(config),
         "/return_config" => () -> (return config),
         "/config_value" => config,
-        "/stove/cook" => () -> begin
-            config.items_cooked+=1;
-            "Cooking item number: $(config.items_cooked)"; end,
+        "/stove/cook/remove" => () -> length(config.stove)>0 && pop!(config.stove) ,
+        "/stove/cook/add" => (food) -> begin
+            if length(config.stove) < config.stove_elements
+                push!(config.stove,food)
+                config.items_cooked+=1;
+                println("Added $food to stove, Cooking item number: $(config.items_cooked)") 
+            else
+                println("Stove full, can't add $food")
+
+            end
+        end, # end of fcn
     )
     validate_registry(registry)
     return registry
@@ -207,7 +216,7 @@ child segment names. Leaf nodes are NamedTuples with a single field
 """
 function registry_to_namedtuples(registry::AbstractDict{<:AbstractString, <:Function})
     validate_registry(registry)
-    tree = build_registry_tree(registry)
+    tree = build_registry_tree(registry; require_callable=true)
     return tree_to_namedtuple(tree, String[])
 end
 
@@ -341,14 +350,14 @@ function Base.show(io::IO, branch::MenuBranch)
 end
 
 """
-    registry_to_menu(registry::AbstractDict{<:AbstractString, <:Function}) -> MenuBranch
+    registry_to_menu(registry::AbstractDict{<:AbstractString}) -> MenuBranch
 
 Render a registry of JSON Pointer callables into a hierarchy of
 `MenuBranch` and `MenuLeaf` nodes optimised for REPL exploration.
 """
-function registry_to_menu(registry::AbstractDict{<:AbstractString, <:Function})
+function registry_to_menu(registry::AbstractDict{<:AbstractString})
     validate_registry(registry)
-    tree = build_registry_tree(registry)
+    tree = build_registry_tree(registry; require_callable=false)
     return tree_to_menu_branch(tree, String[])
 end
 
@@ -374,7 +383,6 @@ function tree_to_menu_branch(tree::Dict{String, Any}, path::Vector{String})
         elseif child isa Dict
             children[sym] = tree_to_menu_branch(Dict{String, Any}(child), child_path)
         else
-            child isa Function || throw(ArgumentError("Leaf for pointer '$(pointer_from_segments(child_path))' must be callable"))
             children[sym] = MenuLeaf(pointer_from_segments(child_path), child)
         end
     end

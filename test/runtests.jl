@@ -208,3 +208,52 @@ end
     @test occursin("choices=[config]", config_display)
     @test_throws ArgumentError menu_to_registry(config_branch)
 end
+
+@testset "example_kitchen_registry" begin
+    registry = example_kitchen_registry()
+
+    @test registry["/name"]() == "My Kitchen"
+    @test registry["/config_value"] isa REPLTrees.KitchenConfig
+
+    menu = registry_to_menu(registry)
+    @test menu isa MenuBranch
+
+    config_leaf = menu.config_value
+    @test config_leaf isa MenuLeaf
+    @test config_leaf.pointer == "/config_value"
+    @test config_leaf() === registry["/config_value"]
+
+    show_config_leaf = menu.show_config
+    @test show_config_leaf isa MenuLeaf
+    @test REPLTrees.is_leaf_callable(show_config_leaf)
+
+    branch_display = sprint(show, menu)
+    @test occursin("config_value", branch_display)
+    @test !occursin("config_value()", branch_display)
+
+    cook_branch = menu.stove.cook
+    cook_display = sprint(show, cook_branch)
+    @test occursin("add()", cook_display)
+    @test occursin("remove()", cook_display)
+
+    kitchen = menu.config_value()
+    @test kitchen isa REPLTrees.KitchenConfig
+    @test isempty(kitchen.stove)
+    @test kitchen.items_cooked == 0
+
+    redirect_stdout(devnull) do
+        cook_branch.add("Soup")
+    end
+    @test kitchen.items_cooked == 1
+    @test kitchen.stove == ["Soup"]
+
+    removed = cook_branch.remove()
+    @test removed == "Soup"
+    @test isempty(kitchen.stove)
+
+    removed_again = cook_branch.remove()
+    @test removed_again === false
+    @test isempty(kitchen.stove)
+
+    @test_throws ArgumentError menu_to_registry(menu)
+end
