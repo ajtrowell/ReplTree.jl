@@ -4,6 +4,7 @@ export json_pointer_segments,
        registry_branches,
        validate_registry,
        example_cat_registry,
+       example_kitchen_registry,
        registry_to_namedtuples,
        namedtuples_to_registry,
        MenuBranch,
@@ -149,6 +150,52 @@ function example_cat_registry()
     validate_registry(registry)
     return registry
 end
+
+
+"""
+    Example mutable Struct KitchenConfig
+
+Demonstrates how configuration data can be represented as part of a 
+registry.
+
+"""
+@kwdef mutable struct KitchenConfig
+    stove_elements::Integer = 4
+    stove_elements_in_use::Integer = 0
+    oven_bays::Integer = 1
+    oven_bays_in_use::Integer = 0
+    items_cooked::Integer = 0
+end
+
+"""
+    example_kitchen_registry() -> Dict{String, Any}
+
+Return a dictionary describing leaf values for a sample kitchen registry.
+
+Keys are JSON Pointer strings identifying the leaves. 
+Values may be Any type. 
+Expected types are callables which may be closures on other data, 
+or mutable / referenced data. 
+Branches are not represented in the dictionary.
+"""
+function example_kitchen_registry()
+
+    config = KitchenConfig(stove_elements=4, oven_bays=2);
+
+
+    registry = Dict{String, Any}(
+        "/name" => () -> "My Kitchen",
+        "/show_config" => () -> show(config),
+        "/return_config" => () -> (return config),
+        "/config_value" => config,
+        "/stove/cook" => () -> begin
+            config.items_cooked+=1;
+            "Cooking item number: $(config.items_cooked)"; end,
+    )
+    validate_registry(registry)
+    return registry
+end
+
 
 """
     registry_to_namedtuples(registry::AbstractDict{<:AbstractString, <:Function}) -> NamedTuple
