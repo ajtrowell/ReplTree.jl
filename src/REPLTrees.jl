@@ -10,12 +10,12 @@ export json_pointer_segments,
        registry_to_namedtuples,
        namedtuples_to_registry,
        MenuBranch,
-       MenuLeaf,
        registry_to_menu,
        menu_to_registry,
        merge_registry,
        merge_registry!,
-       view_struct
+       view_struct,
+       child_pointer
 
 
 include("utilities.jl")
@@ -288,36 +288,6 @@ function collect_namedtuple_registry!(registry::Dict{String, Function}, node::Na
 end
 
 """
-    MenuLeaf{V}
-
-Represents a leaf in the REPL menu hierarchy.
-
-- `pointer`: Absolute JSON Pointer string identifying the leaf in the
-  source registry.
-- `value`: Stored payload; typically a callable but may be any value. If
-  callable, invoking the leaf dispatches to this payload.
-"""
-struct MenuLeaf{V}
-    pointer::String
-    value::V
-end
-
-is_leaf_callable(leaf::MenuLeaf) = leaf.value isa Function
-
-function (leaf::MenuLeaf)(args...; kwargs...)
-    val = leaf.value
-    if val isa Function
-        return val(args...; kwargs...)
-    elseif isempty(args) && isempty(kwargs)
-        return val
-    else
-        throw(ArgumentError("Leaf at pointer '$(leaf.pointer)' is not callable"))
-    end
-end
-
-Base.show(io::IO, leaf::MenuLeaf) = print(io, "MenuLeaf(", leaf.pointer, ")")
-
-"""
     MenuBranch
 
 Represents a branch node in the REPL menu hierarchy.
@@ -325,8 +295,8 @@ Represents a branch node in the REPL menu hierarchy.
 - `pointer`: Absolute JSON Pointer string for the branch.
 - `order`: Symbols used to expose ordered field access in the REPL (for
   tab completion and display).
-- `children`: Mapping from sanitized symbols to `MenuBranch` or
-  `MenuLeaf` children.
+- `children`: Mapping from sanitized symbols to child nodes (either
+  nested `MenuBranch`es or raw leaf values).
 - `segment_lookup`: Mapping from sanitized symbols back to their original
   JSON Pointer path segments.
 """
@@ -337,7 +307,20 @@ struct MenuBranch
     segment_lookup::Dict{Symbol, String}
 end
 
-const MenuNode = Union{MenuBranch, MenuLeaf}
+is_leaf_callable(value) = value isa Function
+
+"""
+    child_pointer(branch::MenuBranch, name::Symbol) -> String
+
+Return the absolute JSON Pointer string for the child identified by
+`name` within `branch`.
+"""
+function child_pointer(branch::MenuBranch, name::Symbol)
+    haskey(branch.segment_lookup, name) || throw(KeyError(name))
+    segments = branch.pointer == "" ? String[] : copy(json_pointer_segments(branch.pointer))
+    push!(segments, branch.segment_lookup[name])
+    return pointer_from_segments(segments)
+end
 
 function Base.propertynames(branch::MenuBranch, private::Bool=false)
     if private
@@ -361,7 +344,9 @@ function Base.show(io::IO, branch::MenuBranch)
     choices = map(branch.order) do sym
         label = branch.segment_lookup[sym]
         child = branch.children[sym]
-        if child isa MenuLeaf && is_leaf_callable(child)
+        if child isa MenuBranch
+            return label
+        elseif is_leaf_callable(child)
             return string(label, "()")
         else
             return label
@@ -374,7 +359,7 @@ end
     registry_to_menu(registry::AbstractDict{<:AbstractString}) -> MenuBranch
 
 Render a registry of JSON Pointer callables into a hierarchy of
-`MenuBranch` and `MenuLeaf` nodes optimised for REPL exploration.
+`MenuBranch` nodes with raw leaf values optimised for REPL exploration.
 """
 function registry_to_menu(registry::AbstractDict{<:AbstractString})
     validate_registry(registry)
@@ -404,7 +389,7 @@ function tree_to_menu_branch(tree::Dict{String, Any}, path::Vector{String})
         elseif child isa Dict
             children[sym] = tree_to_menu_branch(Dict{String, Any}(child), child_path)
         else
-            children[sym] = MenuLeaf(pointer_from_segments(child_path), child)
+            children[sym] = child
         end
     end
 
@@ -424,16 +409,16 @@ function menu_to_registry(menu::MenuBranch)
     return registry
 end
 
-function collect_menu_registry!(registry::Dict{String, Function}, leaf::MenuLeaf)
-    val = leaf.value
-    is_leaf_callable(leaf) || throw(ArgumentError("Leaf at pointer '$(leaf.pointer)' must be callable"))
-    registry[leaf.pointer] = val
-end
-
 function collect_menu_registry!(registry::Dict{String, Function}, branch::MenuBranch)
     for name in branch.order
         child = branch.children[name]
-        collect_menu_registry!(registry, child)
+        if child isa MenuBranch
+            collect_menu_registry!(registry, child)
+        else
+            pointer = child_pointer(branch, name)
+            child isa Function || throw(ArgumentError("Leaf at pointer '$pointer' must be callable"))
+            registry[pointer] = child
+        end
     end
 end
 

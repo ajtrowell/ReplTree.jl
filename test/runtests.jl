@@ -171,8 +171,8 @@ end
     @test Set(propertynames(stats_branch)) == Set([:age, :is_indoor])
 
     indoor_leaf = stats_branch.is_indoor
-    @test indoor_leaf isa MenuLeaf
-    @test indoor_leaf.pointer == "/stats/is-indoor"
+    @test indoor_leaf isa Function
+    @test REPLTrees.child_pointer(stats_branch, :is_indoor) == "/stats/is-indoor"
     @test indoor_leaf()
 
     sound_branch = menu.commands.sound
@@ -188,9 +188,6 @@ end
     branch_display = sprint(show, stats_branch)
     @test occursin("MenuBranch(/stats; choices=[age(), is-indoor()])", branch_display)
 
-    leaf_display = sprint(show, indoor_leaf)
-    @test occursin("MenuLeaf(/stats/is-indoor)", leaf_display)
-
     regenerated = menu_to_registry(menu)
     @test Set(keys(regenerated)) == Set(keys(registry))
 
@@ -199,11 +196,7 @@ end
     end
 
     config = Dict(:volume => 10)
-    config_leaf = MenuLeaf("/settings/config", config)
-    @test config_leaf() === config
-    @test_throws ArgumentError config_leaf(1)
-
-    config_branch = MenuBranch("/settings", [:config], Dict(:config => config_leaf), Dict(:config => "config"))
+    config_branch = MenuBranch("/settings", [:config], Dict(:config => config), Dict(:config => "config"))
     config_display = sprint(show, config_branch)
     @test occursin("choices=[config]", config_display)
     @test_throws ArgumentError menu_to_registry(config_branch)
@@ -218,13 +211,12 @@ end
     menu = registry_to_menu(registry)
     @test menu isa MenuBranch
 
-    config_leaf = menu.config_value
-    @test config_leaf isa MenuLeaf
-    @test config_leaf.pointer == "/config_value"
-    @test config_leaf() === registry["/config_value"]
+    config_value = menu.config_value
+    @test config_value === registry["/config_value"]
+    @test REPLTrees.child_pointer(menu, :config_value) == "/config_value"
 
     show_config_leaf = menu.show_config
-    @test show_config_leaf isa MenuLeaf
+    @test show_config_leaf isa Function
     @test REPLTrees.is_leaf_callable(show_config_leaf)
 
     branch_display = sprint(show, menu)
@@ -236,7 +228,7 @@ end
     @test occursin("add()", cook_display)
     @test occursin("remove()", cook_display)
 
-    kitchen = menu.config_value()
+    kitchen = menu.config_value
     @test kitchen isa REPLTrees.KitchenConfig
     @test isempty(kitchen.stove)
     @test kitchen.items_cooked == 0
@@ -338,5 +330,5 @@ end
     @test dishwasher isa MenuBranch
 
     @test dishwasher.name() == "Dishwasher"
-    @test menu.config_value() isa REPLTrees.KitchenConfig
+    @test menu.config_value isa REPLTrees.KitchenConfig
 end
