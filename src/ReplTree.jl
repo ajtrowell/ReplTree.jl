@@ -1,4 +1,4 @@
-module REPLTrees
+module ReplTree
 
 export json_pointer_segments,
        registry_branches,

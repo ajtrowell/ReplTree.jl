@@ -7,4 +7,4 @@ cd .. # Move to package root
 
 
 # Open an interactive julia session
-julia -i --project=. -e 'using Revise; using REPLTrees'
+julia -i --project=. -e 'using Revise; using ReplTree'

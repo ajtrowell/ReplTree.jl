@@ -1,5 +1,5 @@
 using Test
-using REPLTrees
+using ReplTree
 
 @testset "json_pointer_segments" begin
     @test json_pointer_segments("") == String[]
@@ -172,7 +172,7 @@ end
 
     indoor_leaf = stats_branch.is_indoor
     @test indoor_leaf isa Function
-    @test REPLTrees.child_pointer(stats_branch, :is_indoor) == "/stats/is-indoor"
+    @test ReplTree.child_pointer(stats_branch, :is_indoor) == "/stats/is-indoor"
     @test indoor_leaf()
 
     sound_branch = menu.commands.sound
@@ -206,30 +206,30 @@ end
     registry = example_kitchen_registry()
 
     @test registry["/name"]() == "My Kitchen"
-    @test registry["/config_value"] isa REPLTrees.KitchenConfig
+    @test registry["/config"] isa ReplTree.KitchenConfig
 
     menu = registry_to_menu(registry)
     @test menu isa MenuBranch
 
-    config_value = menu.config_value
-    @test config_value === registry["/config_value"]
-    @test REPLTrees.child_pointer(menu, :config_value) == "/config_value"
+    config_value = menu.config
+    @test config_value === registry["/config"]
+    @test ReplTree.child_pointer(menu, :config) == "/config"
 
-    show_config_leaf = menu.show_config
-    @test show_config_leaf isa Function
-    @test REPLTrees.is_leaf_callable(show_config_leaf)
+    cook_add_leaf = menu.stove.cook.add
+    @test cook_add_leaf isa Function
+    @test ReplTree.is_leaf_callable(cook_add_leaf)
 
     branch_display = sprint(show, menu)
-    @test occursin("config_value", branch_display)
-    @test !occursin("config_value()", branch_display)
+    @test occursin("config", branch_display)
+    @test !occursin("config()", branch_display)
 
     cook_branch = menu.stove.cook
     cook_display = sprint(show, cook_branch)
     @test occursin("add()", cook_display)
     @test occursin("remove()", cook_display)
 
-    kitchen = menu.config_value
-    @test kitchen isa REPLTrees.KitchenConfig
+    kitchen = menu.config
+    @test kitchen isa ReplTree.KitchenConfig
     @test isempty(kitchen.stove)
     @test kitchen.items_cooked == 0
 
@@ -255,7 +255,7 @@ end
 
     @test registry["/name"]() == "Dishwasher"
     config = registry["/config"]
-    @test config isa REPLTrees.DishwasherConfig
+    @test config isa ReplTree.DishwasherConfig
     @test config.running == false
     @test isempty(config.queue)
 
@@ -365,7 +365,7 @@ end
 @testset "example_kitchen_combo_registry" begin
     registry = example_kitchen_combo_registry()
 
-    @test registry["/config_value"] isa REPLTrees.KitchenConfig
+    @test registry["/config"] isa ReplTree.KitchenConfig
     @test registry["/appliances/dishwasher/name"]() == "Dishwasher"
 
     menu = registry_to_menu(registry)
@@ -375,5 +375,5 @@ end
     @test dishwasher isa MenuBranch
 
     @test dishwasher.name() == "Dishwasher"
-    @test menu.config_value isa REPLTrees.KitchenConfig
+    @test menu.config isa ReplTree.KitchenConfig
 end
