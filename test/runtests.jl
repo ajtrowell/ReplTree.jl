@@ -334,6 +334,32 @@ end
 
     merge_registry!(kitchen_menu, "/appliances/dishwasher", dishwasher_reg)
     @test kitchen_menu.appliances.dishwasher.status.summary() isa String
+
+    combined = merge_registry(base, "/", Dict("/extra" => () -> 3))
+    @test haskey(combined, "/extra")
+
+    merge_registry!(mutable_base, "/", Dict("/another" => () -> 4))
+    @test mutable_base["/another"]() == 4
+
+    root_menu = registry_to_menu(Dict("/alpha" => () -> 1))
+    merged_root_menu = merge_registry(root_menu, "/", Dict("/beta" => () -> 2))
+    @test merged_root_menu.alpha() == 1
+    @test merged_root_menu.beta() == 2
+
+    merge_registry!(root_menu, "/", Dict("/gamma" => () -> 3))
+    @test root_menu.gamma() == 3
+
+    two_arg = merge_registry(base, Dict("/extra2" => () -> 5))
+    @test haskey(two_arg, "/extra2")
+
+    merge_registry!(mutable_base, Dict("/another2" => () -> 6))
+    @test mutable_base["/another2"]() == 6
+
+    two_arg_menu = merge_registry(root_menu, Dict("/delta" => () -> 4))
+    @test two_arg_menu.delta() == 4
+
+    merge_registry!(root_menu, Dict("/epsilon" => () -> 5))
+    @test root_menu.epsilon() == 5
 end
 
 @testset "example_kitchen_combo_registry" begin

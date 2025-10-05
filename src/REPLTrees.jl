@@ -159,6 +159,7 @@ function merge_registry end
 
 function merge_registry(base::AbstractDict{<:AbstractString}, branch_pointer::AbstractString,
                         additions::AbstractDict{<:AbstractString})
+    branch_pointer = normalize_branch_pointer(branch_pointer)
     merged = Dict{String, Any}()
     for (pointer, value) in base
         merged[String(pointer)] = value
@@ -166,6 +167,9 @@ function merge_registry(base::AbstractDict{<:AbstractString}, branch_pointer::Ab
     merge_registry!(merged, branch_pointer, additions)
     return merged
 end
+
+merge_registry(base::AbstractDict{<:AbstractString}, additions::AbstractDict{<:AbstractString}) =
+    merge_registry(base, "/", additions)
 
 
 """
@@ -178,6 +182,7 @@ function merge_registry! end
 
 function merge_registry!(base::Dict{String, Any}, branch_pointer::AbstractString,
                          additions::AbstractDict{<:AbstractString})
+    branch_pointer = normalize_branch_pointer(branch_pointer)
     branch_pointer == "" || startswith(branch_pointer, "/") ||
         throw(ArgumentError("Branch pointer must be empty or begin with '/'"))
 
@@ -205,6 +210,9 @@ function merge_registry!(base::Dict{String, Any}, branch_pointer::AbstractString
 
     return base
 end
+
+merge_registry!(base::Dict{String, Any}, additions::AbstractDict{<:AbstractString}) =
+    merge_registry!(base, "/", additions)
 
 
 """
@@ -445,13 +453,18 @@ end
 
 function merge_registry(menu::MenuBranch, branch_pointer::AbstractString,
                         additions::AbstractDict{<:AbstractString})
+    branch_pointer = normalize_branch_pointer(branch_pointer)
     base_registry = menu_to_any_registry(menu)
     merged_registry = merge_registry(base_registry, branch_pointer, additions)
     return registry_to_menu(merged_registry)
 end
 
+merge_registry(menu::MenuBranch, additions::AbstractDict{<:AbstractString}) =
+    merge_registry(menu, "/", additions)
+
 function merge_registry!(menu::MenuBranch, branch_pointer::AbstractString,
                          additions::AbstractDict{<:AbstractString})
+    branch_pointer = normalize_branch_pointer(branch_pointer)
     base_registry = menu_to_any_registry(menu)
     merge_registry!(base_registry, branch_pointer, additions)
     merged_menu = registry_to_menu(base_registry)
@@ -461,6 +474,11 @@ function merge_registry!(menu::MenuBranch, branch_pointer::AbstractString,
     menu.segment_lookup = merged_menu.segment_lookup
     return menu
 end
+
+merge_registry!(menu::MenuBranch, additions::AbstractDict{<:AbstractString}) =
+    merge_registry!(menu, "/", additions)
+
+normalize_branch_pointer(pointer::AbstractString) = pointer == "/" ? "" : pointer
 
 include("examples.jl")
 
