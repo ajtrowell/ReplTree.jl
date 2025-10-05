@@ -287,6 +287,16 @@ function collect_namedtuple_registry!(registry::Dict{String, Function}, node::Na
     end
 end
 
+"""
+    MenuLeaf{V}
+
+Represents a leaf in the REPL menu hierarchy.
+
+- `pointer`: Absolute JSON Pointer string identifying the leaf in the
+  source registry.
+- `value`: Stored payload; typically a callable but may be any value. If
+  callable, invoking the leaf dispatches to this payload.
+"""
 struct MenuLeaf{V}
     pointer::String
     value::V
@@ -307,6 +317,19 @@ end
 
 Base.show(io::IO, leaf::MenuLeaf) = print(io, "MenuLeaf(", leaf.pointer, ")")
 
+"""
+    MenuBranch
+
+Represents a branch node in the REPL menu hierarchy.
+
+- `pointer`: Absolute JSON Pointer string for the branch.
+- `order`: Symbols used to expose ordered field access in the REPL (for
+  tab completion and display).
+- `children`: Mapping from sanitized symbols to `MenuBranch` or
+  `MenuLeaf` children.
+- `segment_lookup`: Mapping from sanitized symbols back to their original
+  JSON Pointer path segments.
+"""
 struct MenuBranch
     pointer::String
     order::Vector{Symbol}
