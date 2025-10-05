@@ -315,6 +315,25 @@ end
         "/a",
         Dict("/b" => () -> 2),
     )
+
+    menu = registry_to_menu(Dict("/root/item" => () -> "item"))
+    merged_menu = merge_registry(menu, "/tools", Dict("/hammer" => () -> "bang"))
+    @test !haskey(menu.children, :tools)
+    @test merged_menu.tools.hammer() == "bang"
+    @test menu_to_registry(merged_menu)["/tools/hammer"]() == "bang"
+
+    merge_registry!(menu, "/tools", Dict("/hammer" => () -> "clang"))
+    @test menu.tools.hammer() == "clang"
+    @test menu_to_registry(menu)["/tools/hammer"]() == "clang"
+
+    kitchen_menu = registry_to_menu(example_kitchen_registry())
+    dishwasher_reg = example_dishwasher_registry()
+    kitchen_with_dw = merge_registry(kitchen_menu, "/appliances/dishwasher", dishwasher_reg)
+    @test kitchen_with_dw.appliances.dishwasher.name() == "Dishwasher"
+    @test :appliances ∉ propertynames(kitchen_menu)
+
+    merge_registry!(kitchen_menu, "/appliances/dishwasher", dishwasher_reg)
+    @test kitchen_menu.appliances.dishwasher.status.summary() isa String
 end
 
 @testset "example_kitchen_combo_registry" begin

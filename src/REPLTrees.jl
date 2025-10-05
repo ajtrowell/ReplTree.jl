@@ -150,13 +150,13 @@ function prefixed_registry(branch_pointer::AbstractString, registry::AbstractDic
 end
 
 """
-    merge_registry(base::AbstractDict{<:AbstractString}, branch_pointer::AbstractString,
-                   additions::AbstractDict{<:AbstractString}) -> Dict{String, Any}
+merge_registry(base, branch_pointer, additions)
 
-Return a new registry containing `base` plus `additions` merged under the
-`branch_pointer` path. Throws if any merged pointer collides with existing
-leaves or violates branch constraints.
+Return a new registry or menu with `additions` merged under the
+`branch_pointer` path of `base`. The original `base` is left unchanged.
 """
+function merge_registry end
+
 function merge_registry(base::AbstractDict{<:AbstractString}, branch_pointer::AbstractString,
                         additions::AbstractDict{<:AbstractString})
     merged = Dict{String, Any}()
@@ -167,13 +167,15 @@ function merge_registry(base::AbstractDict{<:AbstractString}, branch_pointer::Ab
     return merged
 end
 
-"""
-    merge_registry!(base::Dict{String, Any}, branch_pointer::AbstractString,
-                    additions::AbstractDict{<:AbstractString}) -> Dict{String, Any}
 
-Mutate `base` by merging `additions` under `branch_pointer`. Throws on
-conflicts or invalid registry structure.
 """
+merge_registry!(base, branch_pointer, additions)
+
+Mutate `base` by merging `additions` under `branch_pointer`. Throws when
+conflicts with existing leaves are detected.
+"""
+function merge_registry! end
+
 function merge_registry!(base::Dict{String, Any}, branch_pointer::AbstractString,
                          additions::AbstractDict{<:AbstractString})
     branch_pointer == "" || startswith(branch_pointer, "/") ||
@@ -203,6 +205,7 @@ function merge_registry!(base::Dict{String, Any}, branch_pointer::AbstractString
 
     return base
 end
+
 
 """
     registry_to_namedtuples(registry::AbstractDict{<:AbstractString, <:Function}) -> NamedTuple
@@ -300,7 +303,7 @@ Represents a branch node in the REPL menu hierarchy.
 - `segment_lookup`: Mapping from sanitized symbols back to their original
   JSON Pointer path segments.
 """
-struct MenuBranch
+mutable struct MenuBranch
     pointer::String
     order::Vector{Symbol}
     children::Dict{Symbol, Any}
@@ -420,6 +423,43 @@ function collect_menu_registry!(registry::Dict{String, Function}, branch::MenuBr
             registry[pointer] = child
         end
     end
+end
+
+function menu_to_any_registry(menu::MenuBranch)
+    registry = Dict{String, Any}()
+    collect_menu_values!(registry, menu)
+    return registry
+end
+
+function collect_menu_values!(registry::Dict{String, Any}, branch::MenuBranch)
+    for name in branch.order
+        child = branch.children[name]
+        if child isa MenuBranch
+            collect_menu_values!(registry, child)
+        else
+            pointer = child_pointer(branch, name)
+            registry[pointer] = child
+        end
+    end
+end
+
+function merge_registry(menu::MenuBranch, branch_pointer::AbstractString,
+                        additions::AbstractDict{<:AbstractString})
+    base_registry = menu_to_any_registry(menu)
+    merged_registry = merge_registry(base_registry, branch_pointer, additions)
+    return registry_to_menu(merged_registry)
+end
+
+function merge_registry!(menu::MenuBranch, branch_pointer::AbstractString,
+                         additions::AbstractDict{<:AbstractString})
+    base_registry = menu_to_any_registry(menu)
+    merge_registry!(base_registry, branch_pointer, additions)
+    merged_menu = registry_to_menu(base_registry)
+    menu.pointer = merged_menu.pointer
+    menu.order = merged_menu.order
+    menu.children = merged_menu.children
+    menu.segment_lookup = merged_menu.segment_lookup
+    return menu
 end
 
 include("examples.jl")

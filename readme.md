@@ -12,7 +12,7 @@
 
 ## Registry Utilities
 
-- `merge_registry` / `merge_registry!` merge a registry of leaves into an existing registry under a JSON Pointer branch while preventing conflicts with existing leaves.
+- `merge_registry` / `merge_registry!` merge a registry (or a rendered `MenuBranch`) under a JSON Pointer branch while preventing conflicts with existing leaves.
 - Registries can contain callables, mutable configuration structs, or other reference data for REPL exploration.
 
 ## Example Registries
