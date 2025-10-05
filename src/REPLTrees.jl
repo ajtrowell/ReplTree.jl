@@ -5,12 +5,16 @@ export json_pointer_segments,
        validate_registry,
        example_cat_registry,
        example_kitchen_registry,
+       example_dishwasher_registry,
+       example_kitchen_combo_registry,
        registry_to_namedtuples,
        namedtuples_to_registry,
        MenuBranch,
        MenuLeaf,
        registry_to_menu,
-       menu_to_registry
+       menu_to_registry,
+       merge_registry,
+       merge_registry!
 
 """
     json_pointer_segments(pointer::AbstractString) -> Vector{String}
@@ -125,86 +129,76 @@ function build_registry_tree(registry::AbstractDict{<:AbstractString}; require_c
     return tree
 end
 
-"""
-    example_cat_registry() -> Dict{String, Function}
+function prefixed_registry(branch_pointer::AbstractString, registry::AbstractDict{<:AbstractString})
+    branch_segments = branch_pointer == "" ? String[] : json_pointer_segments(branch_pointer)
+    result = Dict{String, Any}()
 
-Return a dictionary describing leaf values for a sample cat registry.
+    for (pointer, value) in registry
+        leaf_segments = pointer == "" ? String[] : json_pointer_segments(pointer)
+        combined_segments = String[]
+        append!(combined_segments, branch_segments)
+        append!(combined_segments, leaf_segments)
+        combined_pointer = pointer_from_segments(combined_segments)
+        result[combined_pointer] = value
+    end
 
-Keys are JSON Pointer strings identifying the leaves, and values are
-zero-argument callables producing the associated leaf data. Branches are
-not represented in the dictionary.
-"""
-function example_cat_registry()
-    registry = Dict{String, Function}(
-        "/name" => () -> "Whiskers",
-        "/appearance/color" => () -> "tabby",
-        "/appearance/eye-color" => () -> "green",
-        "/stats/age" => () -> 4,
-        "/stats/is-indoor" => () -> true,
-        "/behavior/favorite-toy" => () -> "feather wand",
-        "/behavior/nap-length-minutes" => () -> 25,
-        "/commands/move/stay" => () -> "Don't move",
-        "/commands/move/come" => () -> "Here kitty kitty",
-        "/commands/sound/speak" => () -> "Meow",
-        "/commands/sound/hiss" => () -> "Hiss!",
-        "/commands/sound/purr" => () -> "Purr",
-    )
-    validate_registry(registry)
-    return registry
-end
-
-
-"""
-    Example mutable Struct KitchenConfig
-
-Demonstrates how configuration data can be represented as part of a 
-registry.
-
-"""
-@kwdef mutable struct KitchenConfig
-    stove_elements::Integer = 4
-    oven_bays::Integer = 1
-    items_cooked::Integer = 0
-    stove::Vector{Any} = []
+    return result
 end
 
 """
-    example_kitchen_registry() -> Dict{String, Any}
+    merge_registry(base::AbstractDict{<:AbstractString}, branch_pointer::AbstractString,
+                   additions::AbstractDict{<:AbstractString}) -> Dict{String, Any}
 
-Return a dictionary describing leaf values for a sample kitchen registry.
-
-Keys are JSON Pointer strings identifying the leaves. 
-Values may be Any type. 
-Expected types are callables which may be closures on other data, 
-or mutable / referenced data. 
-Branches are not represented in the dictionary.
+Return a new registry containing `base` plus `additions` merged under the
+`branch_pointer` path. Throws if any merged pointer collides with existing
+leaves or violates branch constraints.
 """
-function example_kitchen_registry()
-
-    config = KitchenConfig(stove_elements=4, oven_bays=2);
-
-
-    registry = Dict{String, Any}(
-        "/name" => () -> "My Kitchen",
-        "/show_config" => () -> show(config),
-        "/return_config" => () -> (return config),
-        "/config_value" => config,
-        "/stove/cook/remove" => () -> length(config.stove)>0 && pop!(config.stove) ,
-        "/stove/cook/add" => (food) -> begin
-            if length(config.stove) < config.stove_elements
-                push!(config.stove,food)
-                config.items_cooked+=1;
-                println("Added $food to stove, Cooking item number: $(config.items_cooked)") 
-            else
-                println("Stove full, can't add $food")
-
-            end
-        end, # end of fcn
-    )
-    validate_registry(registry)
-    return registry
+function merge_registry(base::AbstractDict{<:AbstractString}, branch_pointer::AbstractString,
+                        additions::AbstractDict{<:AbstractString})
+    merged = Dict{String, Any}()
+    for (pointer, value) in base
+        merged[String(pointer)] = value
+    end
+    merge_registry!(merged, branch_pointer, additions)
+    return merged
 end
 
+"""
+    merge_registry!(base::Dict{String, Any}, branch_pointer::AbstractString,
+                    additions::AbstractDict{<:AbstractString}) -> Dict{String, Any}
+
+Mutate `base` by merging `additions` under `branch_pointer`. Throws on
+conflicts or invalid registry structure.
+"""
+function merge_registry!(base::Dict{String, Any}, branch_pointer::AbstractString,
+                         additions::AbstractDict{<:AbstractString})
+    branch_pointer == "" || startswith(branch_pointer, "/") ||
+        throw(ArgumentError("Branch pointer must be empty or begin with '/'"))
+
+    if branch_pointer != "" && haskey(base, branch_pointer)
+        throw(ArgumentError("Cannot merge into pointer '$branch_pointer' because it is already a leaf"))
+    end
+
+    prefixed = prefixed_registry(branch_pointer, additions)
+
+    for pointer in keys(prefixed)
+        if haskey(base, pointer)
+            throw(ArgumentError("Registry already contains pointer '$pointer'"))
+        end
+    end
+
+    candidate = Dict{String, Any}(base)
+    for (pointer, value) in prefixed
+        candidate[pointer] = value
+    end
+    validate_registry(candidate)
+
+    for (pointer, value) in prefixed
+        base[pointer] = value
+    end
+
+    return base
+end
 
 """
     registry_to_namedtuples(registry::AbstractDict{<:AbstractString, <:Function}) -> NamedTuple
@@ -415,5 +409,7 @@ function collect_menu_registry!(registry::Dict{String, Function}, branch::MenuBr
         collect_menu_registry!(registry, child)
     end
 end
+
+include("examples.jl")
 
 end # module

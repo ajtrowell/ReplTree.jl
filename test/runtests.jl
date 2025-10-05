@@ -257,3 +257,86 @@ end
 
     @test_throws ArgumentError menu_to_registry(menu)
 end
+
+@testset "example_dishwasher_registry" begin
+    registry = example_dishwasher_registry()
+
+    @test registry["/name"]() == "Dishwasher"
+    config = registry["/config"]
+    @test config isa REPLTrees.DishwasherConfig
+    @test config.running == false
+    @test isempty(config.queue)
+
+    @test registry["/load/remove"]() === nothing
+
+    registry["/load/add"]("Plate")
+    registry["/load/add"]("Cup")
+    @test length(config.queue) == 2
+
+    menu = registry_to_menu(registry)
+    @test menu.load.add("Bowl") == 3
+    @test length(config.queue) == 3
+
+    summary = menu.status.summary()
+    @test occursin("3 item", summary)
+
+    @test !menu.status.running()
+    @test menu.cycle.start()
+    @test menu.status.running()
+
+    cycles = menu.cycle.finish()
+    @test cycles == 1
+    @test !menu.status.running()
+    @test isempty(config.queue)
+
+    removal = registry["/load/remove"]()
+    @test removal === nothing
+end
+
+@testset "merge_registry" begin
+    base = Dict(
+        "/kitchen/name" => () -> "Kitchen",
+    )
+    additions = Dict(
+        "/info" => () -> "Details",
+        "/config" => Dict(:a => 1),
+    )
+
+    merged = merge_registry(base, "/appliances/dishwasher", additions)
+    @test haskey(merged, "/kitchen/name")
+    @test haskey(merged, "/appliances/dishwasher/info")
+    @test merged["/appliances/dishwasher/config"] == Dict(:a => 1)
+    @test !haskey(base, "/appliances/dishwasher/info")
+
+    mutable_base = Dict{String, Any}(
+        "/root/value" => () -> 1,
+    )
+    merge_registry!(mutable_base, "/branch", Dict("/leaf" => () -> 2))
+    @test mutable_base["/branch/leaf"]() == 2
+
+    @test_throws ArgumentError merge_registry!(Dict{String, Any}(
+        "/dup" => () -> 1,
+    ), "/dup", Dict("/other" => () -> 2))
+
+    @test_throws ArgumentError merge_registry(
+        Dict("/a/b" => () -> 1),
+        "/a",
+        Dict("/b" => () -> 2),
+    )
+end
+
+@testset "example_kitchen_combo_registry" begin
+    registry = example_kitchen_combo_registry()
+
+    @test registry["/config_value"] isa REPLTrees.KitchenConfig
+    @test registry["/appliances/dishwasher/name"]() == "Dishwasher"
+
+    menu = registry_to_menu(registry)
+    appliances = menu.appliances
+    @test appliances isa MenuBranch
+    dishwasher = appliances.dishwasher
+    @test dishwasher isa MenuBranch
+
+    @test dishwasher.name() == "Dishwasher"
+    @test menu.config_value() isa REPLTrees.KitchenConfig
+end
