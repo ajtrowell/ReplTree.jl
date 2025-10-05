@@ -356,7 +356,7 @@ function Base.show(io::IO, branch::MenuBranch)
         label = branch.segment_lookup[sym]
         child = branch.children[sym]
         if child isa MenuBranch
-            return label
+            return string(label, ".")
         elseif is_leaf_callable(child)
             return string(label, "()")
         else

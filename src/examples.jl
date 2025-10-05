@@ -54,9 +54,7 @@ function example_kitchen_registry()
 
     registry = Dict{String, Any}(
         "/name" => () -> "My Kitchen",
-        "/show_config" => () -> show(config),
-        "/return_config" => () -> config,
-        "/config_value" => config,
+        "/config" => config,
         "/stove/cook/remove" => () -> begin
             if !isempty(config.stove)
                 return pop!(config.stove)
