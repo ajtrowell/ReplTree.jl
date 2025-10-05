@@ -14,7 +14,11 @@ export json_pointer_segments,
        registry_to_menu,
        menu_to_registry,
        merge_registry,
-       merge_registry!
+       merge_registry!,
+       view_struct
+
+
+include("utilities.jl")
 
 """
     json_pointer_segments(pointer::AbstractString) -> Vector{String}
