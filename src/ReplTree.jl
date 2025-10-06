@@ -408,29 +408,15 @@ function tree_to_menu_branch(tree::Dict{String, Any}, path::Vector{String})
 end
 
 """
-    menu_to_registry(menu::MenuBranch) -> Dict{String, Function}
+    menu_to_registry(menu::MenuBranch) -> Dict{String, Any}
 
 Collapse a `MenuBranch` hierarchy back into the flat registry mapping
-JSON Pointer strings to callables.
+JSON Pointer strings to the underlying leaf values.
 """
 function menu_to_registry(menu::MenuBranch)
-    registry = Dict{String, Function}()
-    collect_menu_registry!(registry, menu)
+    registry = menu_to_any_registry(menu)
     validate_registry(registry)
     return registry
-end
-
-function collect_menu_registry!(registry::Dict{String, Function}, branch::MenuBranch)
-    for name in branch.order
-        child = branch.children[name]
-        if child isa MenuBranch
-            collect_menu_registry!(registry, child)
-        else
-            pointer = child_pointer(branch, name)
-            child isa Function || throw(ArgumentError("Leaf at pointer '$pointer' must be callable"))
-            registry[pointer] = child
-        end
-    end
 end
 
 function menu_to_any_registry(menu::MenuBranch)
@@ -451,6 +437,33 @@ function collect_menu_values!(registry::Dict{String, Any}, branch::MenuBranch)
     end
 end
 
+function relative_menu_registry(branch::MenuBranch)
+    absolute = menu_to_registry(branch)
+    branch.pointer == "" && return absolute
+
+    prefix_segments = json_pointer_segments(branch.pointer)
+    relative = Dict{String, Any}()
+
+    for (pointer, value) in absolute
+        segments = json_pointer_segments(pointer)
+        length(segments) > length(prefix_segments) ||
+            throw(ArgumentError("Leaf pointer '$pointer' is not a descendant of branch pointer '$(branch.pointer)'"))
+
+        if segments[1:length(prefix_segments)] != prefix_segments
+            throw(ArgumentError("Leaf pointer '$pointer' is not a descendant of branch pointer '$(branch.pointer)'"))
+        end
+
+        relative_segments = segments[length(prefix_segments)+1:end]
+        isempty(relative_segments) &&
+            throw(ArgumentError("Leaf pointer '$pointer' cannot match branch pointer '$(branch.pointer)'"))
+
+        relative_pointer = pointer_from_segments(relative_segments)
+        relative[relative_pointer] = value
+    end
+
+    return relative
+end
+
 function merge_registry(menu::MenuBranch, branch_pointer::AbstractString,
                         additions::AbstractDict{<:AbstractString})
     branch_pointer = normalize_branch_pointer(branch_pointer)
@@ -459,7 +472,16 @@ function merge_registry(menu::MenuBranch, branch_pointer::AbstractString,
     return registry_to_menu(merged_registry)
 end
 
+function merge_registry(menu::MenuBranch, branch_pointer::AbstractString,
+                        additions::MenuBranch)
+    additions_registry = relative_menu_registry(additions)
+    return merge_registry(menu, branch_pointer, additions_registry)
+end
+
 merge_registry(menu::MenuBranch, additions::AbstractDict{<:AbstractString}) =
+    merge_registry(menu, "/", additions)
+
+merge_registry(menu::MenuBranch, additions::MenuBranch) =
     merge_registry(menu, "/", additions)
 
 function merge_registry!(menu::MenuBranch, branch_pointer::AbstractString,
@@ -476,6 +498,15 @@ function merge_registry!(menu::MenuBranch, branch_pointer::AbstractString,
 end
 
 merge_registry!(menu::MenuBranch, additions::AbstractDict{<:AbstractString}) =
+    merge_registry!(menu, "/", additions)
+
+function merge_registry!(menu::MenuBranch, branch_pointer::AbstractString,
+                         additions::MenuBranch)
+    additions_registry = relative_menu_registry(additions)
+    return merge_registry!(menu, branch_pointer, additions_registry)
+end
+
+merge_registry!(menu::MenuBranch, additions::MenuBranch) =
     merge_registry!(menu, "/", additions)
 
 normalize_branch_pointer(pointer::AbstractString) = pointer == "/" ? "" : pointer

@@ -189,6 +189,7 @@ end
     @test occursin("MenuBranch(/stats; choices=[age(), is-indoor()])", branch_display)
 
     regenerated = menu_to_registry(menu)
+    @test regenerated isa Dict{String, Any}
     @test Set(keys(regenerated)) == Set(keys(registry))
 
     for pointer in keys(registry)
@@ -199,7 +200,9 @@ end
     config_branch = MenuBranch("/settings", [:config], Dict(:config => config), Dict(:config => "config"))
     config_display = sprint(show, config_branch)
     @test occursin("choices=[config]", config_display)
-    @test_throws ArgumentError menu_to_registry(config_branch)
+    config_registry = menu_to_registry(config_branch)
+    @test config_registry["/settings/config"] === config
+    @test length(config_registry) == 1
 end
 
 @testset "example_kitchen_registry" begin
@@ -247,7 +250,10 @@ end
     @test removed_again === false
     @test isempty(kitchen.stove)
 
-    @test_throws ArgumentError menu_to_registry(menu)
+    round_tripped = menu_to_registry(menu)
+    @test round_tripped isa Dict{String, Any}
+    @test round_tripped["/config"] === registry["/config"]
+    @test round_tripped["/stove/cook/add"] === registry["/stove/cook/add"]
 end
 
 @testset "example_dishwasher_registry" begin
@@ -322,9 +328,22 @@ end
     @test merged_menu.tools.hammer() == "bang"
     @test menu_to_registry(merged_menu)["/tools/hammer"]() == "bang"
 
+    addition_menu = registry_to_menu(Dict("/wrench" => () -> "tighten"))
+    merged_from_menu = merge_registry(menu, "/tools", addition_menu)
+    @test merged_from_menu.tools.wrench() == "tighten"
+    @test menu_to_registry(merged_from_menu)["/tools/wrench"]() == "tighten"
+
+    relocated_menu = merge_registry(menu, "/gadgets", merged_menu.tools)
+    @test relocated_menu.gadgets.hammer() == "bang"
+    @test menu_to_registry(relocated_menu)["/gadgets/hammer"]() == "bang"
+
     merge_registry!(menu, "/tools", Dict("/hammer" => () -> "clang"))
     @test menu.tools.hammer() == "clang"
     @test menu_to_registry(menu)["/tools/hammer"]() == "clang"
+
+    menu_copy = registry_to_menu(Dict("/root/item" => () -> "item"))
+    merge_registry!(menu_copy, "/gadgets", merged_menu.tools)
+    @test menu_copy.gadgets.hammer() == "bang"
 
     kitchen_menu = registry_to_menu(example_kitchen_registry())
     dishwasher_reg = example_dishwasher_registry()
@@ -376,4 +395,12 @@ end
 
     @test dishwasher.name() == "Dishwasher"
     @test menu.config isa ReplTree.KitchenConfig
+
+    round_tripped = menu_to_registry(menu)
+    @test round_tripped isa Dict{String, Any}
+    @test Set(keys(round_tripped)) == Set(keys(registry))
+
+    for pointer in keys(registry)
+        @test round_tripped[pointer] === registry[pointer]
+    end
 end
