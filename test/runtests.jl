@@ -100,7 +100,7 @@ end
 
 @testset "registry_to_namedtuples" begin
     registry = example_cat_registry()
-    hierarchy = registry_to_namedtuples(registry)
+    hierarchy = ReplTree.registry_to_namedtuples(registry)
 
     @test hierarchy isa NamedTuple
     @test Set(propertynames(hierarchy)) == Set([:name, :appearance, :stats, :behavior, :commands])
@@ -140,8 +140,8 @@ end
 
 @testset "namedtuples_to_registry" begin
     registry = example_cat_registry()
-    hierarchy = registry_to_namedtuples(registry)
-    regenerated = namedtuples_to_registry(hierarchy)
+    hierarchy = ReplTree.registry_to_namedtuples(registry)
+    regenerated = ReplTree.namedtuples_to_registry(hierarchy)
 
     @test regenerated isa Dict{String, Function}
     @test Set(keys(regenerated)) == Set(keys(registry))
@@ -151,10 +151,10 @@ end
     end
 
     invalid_hierarchy = (appearance = (; pointer = "/appearance", leaf = () -> "pretty", color = (; pointer = "/appearance/color", leaf = () -> "tabby")),)
-    @test_throws ArgumentError namedtuples_to_registry(invalid_hierarchy)
+    @test_throws ArgumentError ReplTree.namedtuples_to_registry(invalid_hierarchy)
 
     root_leaf = (; pointer = "", leaf = () -> "root")
-    @test_throws ArgumentError namedtuples_to_registry(root_leaf)
+    @test_throws ArgumentError ReplTree.namedtuples_to_registry(root_leaf)
 end
 
 @testset "menu_rendering" begin
