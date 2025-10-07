@@ -12,11 +12,14 @@ export json_pointer_segments,
        menu_to_registry,
        merge_registry,
        merge_registry!,
+       generate_registry_from_json,
        view_struct,
        child_pointer
 
 
 include("utilities.jl")
+include("namedtuple_conversions.jl")
+include("json_registry.jl")
 
 """
     json_pointer_segments(pointer::AbstractString) -> Vector{String}
@@ -212,8 +215,6 @@ end
 merge_registry!(base::Dict{String, Any}, additions::AbstractDict{<:AbstractString}) =
     merge_registry!(base, "/", additions)
 
-
-include("namedtuple_conversions.jl")
 
 """
     MenuBranch

@@ -1,5 +1,6 @@
 using Test
 using ReplTree
+using JSON3
 
 @testset "json_pointer_segments" begin
     @test json_pointer_segments("") == String[]
@@ -203,6 +204,30 @@ end
     config_registry = menu_to_registry(config_branch)
     @test config_registry["/settings/config"] === config
     @test length(config_registry) == 1
+end
+
+@testset "generate_registry_from_json" begin
+    json = JSON3.read("""
+        {
+            "name": "Whiskers",
+            "stats": {
+                "age": 4,
+                "scores": [1, 2]
+            }
+        }
+    """)
+
+    registry = generate_registry_from_json(json, pointer -> pointer)
+
+    @test registry isa Dict{String, Any}
+    @test registry["/name"] == "/name"
+    @test registry["/stats/age"] == "/stats/age"
+    @test registry["/stats/scores/0"] == "/stats/scores/0"
+    @test registry["/stats/scores/1"] == "/stats/scores/1"
+    @test length(registry) == 4
+
+    scalar = JSON3.read("5")
+    @test_throws ArgumentError generate_registry_from_json(scalar, identity)
 end
 
 @testset "example_kitchen_registry" begin
