@@ -2,6 +2,12 @@ using Test
 using ReplTree
 using JSON3
 
+struct TestFunctor
+    value::Int
+end
+
+(f::TestFunctor)() = f.value
+
 @testset "json_pointer_segments" begin
     @test json_pointer_segments("") == String[]
     @test json_pointer_segments("/foo") == ["foo"]
@@ -81,6 +87,15 @@ end
     ])
 
     @test Set(registry_branches(registry)) == expected
+end
+
+@testset "callable struct display" begin
+    functor = TestFunctor(42)
+    branch = MenuBranch("", [:functor], Dict(:functor => functor), Dict(:functor => "functor"))
+    display = sprint(show, branch)
+
+    @test ReplTree.is_leaf_callable(functor)
+    @test occursin("functor()", display)
 end
 
 @testset "validate_registry" begin

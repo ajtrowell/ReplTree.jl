@@ -14,7 +14,8 @@ export json_pointer_segments,
        merge_registry!,
        generate_registry_from_json,
        view_struct,
-       child_pointer
+       child_pointer,
+       CallableType
 
 
 include("utilities.jl")
@@ -236,7 +237,10 @@ mutable struct MenuBranch
     segment_lookup::Dict{Symbol, String}
 end
 
-is_leaf_callable(value) = value isa Function
+function is_leaf_callable(f)
+    # return value isa Function
+    return !isempty(methods(f)) # Check if callable
+end
 
 """
     child_pointer(branch::MenuBranch, name::Symbol) -> String

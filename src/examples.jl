@@ -89,6 +89,12 @@ Configuration backing the dishwasher registry example.
     completed_cycles::Integer = 0
 end
 
+@kwdef struct CallableType
+    name = "Functor Example"
+end
+
+(ct::CallableType)() = "Return String from Call"
+
 """
     example_dishwasher_registry() -> Dict{String, Any}
 
@@ -101,6 +107,7 @@ function example_dishwasher_registry()
     registry = Dict{String, Any}(
         "/name" => () -> "Dishwasher",
         "/config" => config,
+        "/branch/callableType" => CallableType(), # Functor example
         "/status/running" => () -> config.running,
         "/status/queue" => () -> copy(config.queue),
         "/status/summary" => () -> begin
