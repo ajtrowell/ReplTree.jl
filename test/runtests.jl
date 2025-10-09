@@ -154,6 +154,60 @@ end
     @test isempty(kwargs2)
 end
 
+@testset "set_branch_callbacks!" begin
+    menu = registry_to_menu(example_kitchen_combo_registry())
+    recorder = BranchRecorder(Any[])
+    set_branch_callbacks!(menu, "/appliances/dishwasher", recorder)
+
+    menu.appliances.dishwasher()
+    menu.appliances.dishwasher.cycle()
+
+    @test length(recorder.calls) == 2
+    first_call = recorder.calls[1]
+    second_call = recorder.calls[2]
+    @test first_call[1] == "/appliances/dishwasher"
+    @test second_call[1] == "/appliances/dishwasher/cycle"
+
+    # include_self=false preserves the original callback but still patches descendants
+    menu2 = registry_to_menu(example_kitchen_combo_registry())
+    recorder2 = BranchRecorder(Any[])
+    set_branch_callbacks!(menu2, "/appliances/dishwasher", recorder2; include_self=false)
+
+    temp_path, temp_io = Base.mktemp()
+    try
+        redirect_stdout(temp_io) do
+            menu2.appliances.dishwasher()
+        end
+    finally
+        close(temp_io)
+        rm(temp_path; force=true)
+    end
+    menu2.appliances.dishwasher.cycle()
+
+    @test length(recorder2.calls) == 1
+    only_call = recorder2.calls[1]
+    @test only_call[1] == "/appliances/dishwasher/cycle"
+
+    # recursive=false limits the update to immediate children
+    menu3 = registry_to_menu(example_kitchen_combo_registry())
+    recorder3 = BranchRecorder(Any[])
+    set_branch_callbacks!(menu3, "/appliances", recorder3; recursive=false)
+
+    menu3.appliances.dishwasher()
+    temp_path3, temp_io3 = Base.mktemp()
+    try
+        redirect_stdout(temp_io3) do
+            menu3.appliances.dishwasher.cycle()
+        end
+    finally
+        close(temp_io3)
+        rm(temp_path3; force=true)
+    end
+
+    @test length(recorder3.calls) == 1
+    @test recorder3.calls[1][1] == "/appliances/dishwasher"
+end
+
 @testset "validate_registry" begin
     valid_registry = Dict(
         "/appearance/color" => () -> "tabby",

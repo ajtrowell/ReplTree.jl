@@ -15,7 +15,9 @@ export json_pointer_segments,
        generate_registry_from_json,
        view_struct,
        child_pointer,
-       CallableType
+       CallableType,
+       set_menu_branch_callback!,
+       set_branch_callbacks!
 
 
 include("utilities.jl")
@@ -306,6 +308,67 @@ function Base.show(io::IO, branch::MenuBranch)
         end
     end
     print(io, "MenuBranch(", pointer, "; choices=[", join(choices, ", "), "])")
+end
+
+function menu_branch_symbol(branch::MenuBranch, segment::String)
+    for (sym, stored) in branch.segment_lookup
+        stored == segment && return sym
+    end
+    throw(KeyError("No segment '$segment' under branch pointer '$(branch.pointer)'"))
+end
+
+function find_menu_branch(branch::MenuBranch, pointer::AbstractString)
+    pointer = normalize_branch_pointer(pointer)
+    pointer == "" && return branch
+    segments = json_pointer_segments(pointer)
+    current = branch
+    for segment in segments
+        sym = menu_branch_symbol(current, segment)
+        child = current.children[sym]
+        child isa MenuBranch || throw(ArgumentError("Pointer '$pointer' resolves to a leaf, not a branch"))
+        current = child
+    end
+    return current
+end
+
+"""
+    set_menu_branch_callback!(branch::MenuBranch, callback) -> MenuBranch
+
+Replace the callback invoked when `branch()` is called. `callback` must
+accept the `MenuBranch` as its first argument and may take additional
+positional or keyword arguments. Returns `branch`.
+"""
+function set_menu_branch_callback!(branch::MenuBranch, callback)
+    is_leaf_callable(callback) || throw(ArgumentError("MenuBranch callback must be callable"))
+    branch.callback = callback
+    return branch
+end
+
+function apply_descendant_callbacks!(branch::MenuBranch, callback, recursive::Bool)
+    for child in values(branch.children)
+        child isa MenuBranch || continue
+        set_menu_branch_callback!(child, callback)
+        recursive && apply_descendant_callbacks!(child, callback, recursive)
+    end
+    return branch
+end
+
+"""
+    set_branch_callbacks!(root::MenuBranch, branch_pointer::AbstractString, callback;
+                          include_self::Bool=true, recursive::Bool=true) -> MenuBranch
+
+Set `callback` on the branch located at `branch_pointer` and, by default,
+all of its descendant `MenuBranch` nodes. Pass `include_self=false` to
+leave the target branch unchanged, or `recursive=false` to restrict the
+update to immediate child branches. Returns `root`.
+"""
+function set_branch_callbacks!(root::MenuBranch, branch_pointer::AbstractString, callback;
+                               include_self::Bool=true, recursive::Bool=true)
+    is_leaf_callable(callback) || throw(ArgumentError("MenuBranch callback must be callable"))
+    target = find_menu_branch(root, branch_pointer)
+    include_self && set_menu_branch_callback!(target, callback)
+    apply_descendant_callbacks!(target, callback, recursive)
+    return root
 end
 
 """

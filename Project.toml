@@ -1,7 +1,7 @@
 name = "ReplTree"
 uuid = "d572e37e-0ce6-4d6f-8bb6-5ae049631b7f"
 authors = ["Ashley Trowell"]
-version = "0.2.3"
+version = "0.2.4"
 
 [deps]
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
