@@ -229,15 +229,15 @@ Represents a branch node in the REPL menu hierarchy.
   nested `MenuBranch`es or raw leaf values).
 - `segment_lookup`: Mapping from sanitized symbols back to their original
   JSON Pointer path segments.
-- `callback`: Function invoked when the branch itself is called. Defaults
+- `callback`: Callable invoked when the branch itself is called. Defaults
   to printing the branch via `Base.show`.
 """
-mutable struct MenuBranch{F}
+mutable struct MenuBranch
     pointer::String
     order::Vector{Symbol}
     children::Dict{Symbol, Any}
     segment_lookup::Dict{Symbol, String}
-    callback::F
+    callback::Any
 end
 
 function default_menu_branch_callback(branch::MenuBranch, args...; kwargs...)
@@ -247,11 +247,10 @@ end
 
 function MenuBranch(pointer::String, order::Vector{Symbol}, children::AbstractDict{Symbol, V},
                     segment_lookup::AbstractDict{Symbol, String}; callback=default_menu_branch_callback) where {V}
-    return MenuBranch{typeof(callback)}(pointer,
-                                        order,
-                                        Dict{Symbol, Any}(children),
-                                        Dict{Symbol, String}(segment_lookup),
-                                        callback)
+    is_leaf_callable(callback) || throw(ArgumentError("MenuBranch callback must be callable"))
+    child_dict = children isa Dict{Symbol, Any} ? children : Dict{Symbol, Any}(children)
+    segment_dict = segment_lookup isa Dict{Symbol, String} ? segment_lookup : Dict{Symbol, String}(segment_lookup)
+    return MenuBranch(pointer, order, child_dict, segment_dict, callback)
 end
 
 function (branch::MenuBranch)(args...; kwargs...)

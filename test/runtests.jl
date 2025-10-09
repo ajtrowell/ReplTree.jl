@@ -142,6 +142,16 @@ end
     @test pointer == "/demo"
     @test args == (1, 2)
     @test NamedTuple(kwargs) == (flag = true,)
+
+    new_recorder = BranchRecorder(Any[])
+    custom.callback = new_recorder
+    custom(:alpha)
+
+    @test length(new_recorder.calls) == 1
+    pointer2, args2, kwargs2 = new_recorder.calls[1]
+    @test pointer2 == "/demo"
+    @test args2 == (:alpha,)
+    @test isempty(kwargs2)
 end
 
 @testset "validate_registry" begin
