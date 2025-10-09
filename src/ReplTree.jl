@@ -112,7 +112,7 @@ function build_registry_tree(registry::AbstractDict{<:AbstractString}; require_c
     for (pointer, leaf_value) in registry
         segments = json_pointer_segments(pointer)
         isempty(segments) && throw(ArgumentError("Registry cannot contain root leaf pointer"))
-        if require_callable && !(leaf_value isa Function)
+        if require_callable && !is_leaf_callable(leaf_value)
             throw(ArgumentError("Leaf for pointer '$pointer' must be callable"))
         end
 
@@ -229,17 +229,38 @@ Represents a branch node in the REPL menu hierarchy.
   nested `MenuBranch`es or raw leaf values).
 - `segment_lookup`: Mapping from sanitized symbols back to their original
   JSON Pointer path segments.
+- `callback`: Function invoked when the branch itself is called. Defaults
+  to printing the branch via `Base.show`.
 """
-mutable struct MenuBranch
+mutable struct MenuBranch{F}
     pointer::String
     order::Vector{Symbol}
     children::Dict{Symbol, Any}
     segment_lookup::Dict{Symbol, String}
+    callback::F
 end
 
-function is_leaf_callable(f)
-    # return value isa Function
-    return !isempty(methods(f)) # Check if callable
+function default_menu_branch_callback(branch::MenuBranch, args...; kwargs...)
+    Base.show(Base.stdout, branch)
+    return nothing
+end
+
+function MenuBranch(pointer::String, order::Vector{Symbol}, children::AbstractDict{Symbol, V},
+                    segment_lookup::AbstractDict{Symbol, String}; callback=default_menu_branch_callback) where {V}
+    return MenuBranch{typeof(callback)}(pointer,
+                                        order,
+                                        Dict{Symbol, Any}(children),
+                                        Dict{Symbol, String}(segment_lookup),
+                                        callback)
+end
+
+function (branch::MenuBranch)(args...; kwargs...)
+    return branch.callback(branch, args...; kwargs...)
+end
+
+function is_leaf_callable(value)
+    value isa MenuBranch && return false
+    return !isempty(methods(value))
 end
 
 """
@@ -263,7 +284,7 @@ function Base.propertynames(branch::MenuBranch, private::Bool=false)
 end
 
 function Base.getproperty(branch::MenuBranch, name::Symbol)
-    if name === :pointer || name === :order || name === :children || name === :segment_lookup
+    if name === :pointer || name === :order || name === :children || name === :segment_lookup || name === :callback
         return getfield(branch, name)
     end
     if haskey(branch.children, name)

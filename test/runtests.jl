@@ -1,12 +1,28 @@
 using Test
 using ReplTree
 using JSON3
+using Base: redirect_stdout
 
 struct TestFunctor
     value::Int
 end
 
 (f::TestFunctor)() = f.value
+
+"""
+    BranchRecorder
+
+Mutable functor used in tests to capture callback invocations from a
+`MenuBranch`. Each call records `(pointer, args, kwargs)` into `calls`.
+"""
+mutable struct BranchRecorder
+    calls::Vector{Any}
+end
+
+function (rec::BranchRecorder)(branch::MenuBranch, args...; kwargs...)
+    push!(rec.calls, (branch.pointer, args, kwargs))
+    return :handled
+end
 
 @testset "json_pointer_segments" begin
     @test json_pointer_segments("") == String[]
@@ -95,7 +111,37 @@ end
     display = sprint(show, branch)
 
     @test ReplTree.is_leaf_callable(functor)
+    @test !ReplTree.is_leaf_callable(branch)
     @test occursin("functor()", display)
+end
+
+@testset "menu branch callback" begin
+    functor = TestFunctor(7)
+    branch = MenuBranch("/demo", [:functor], Dict(:functor => functor), Dict(:functor => "functor"))
+
+    temp_path, temp_io = Base.mktemp()
+    try
+        result = redirect_stdout(temp_io) do
+            branch()
+        end
+        @test result === nothing
+    finally
+        close(temp_io)
+    end
+    output = read(temp_path, String)
+    rm(temp_path; force=true)
+    @test occursin("MenuBranch(/demo; choices=[functor()])", output)
+
+    recorder = BranchRecorder(Any[])
+    custom = MenuBranch("/demo", [:functor], Dict(:functor => functor), Dict(:functor => "functor"); callback=recorder)
+    result = custom(1, 2; flag=true)
+
+    @test result === :handled
+    @test length(recorder.calls) == 1
+    pointer, args, kwargs = recorder.calls[1]
+    @test pointer == "/demo"
+    @test args == (1, 2)
+    @test NamedTuple(kwargs) == (flag = true,)
 end
 
 @testset "validate_registry" begin
