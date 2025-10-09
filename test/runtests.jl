@@ -35,6 +35,14 @@ end
     @test_throws ArgumentError json_pointer_segments("foo")
 end
 
+@testset "rebase_json_pointer" begin
+    @test rebase_json_pointer("/root/path/new_root/branch/leaf", "/root/path") == "/new_root/branch/leaf"
+    @test rebase_json_pointer("/root/path/new_root", "/root/path", "/prefixed") == "/prefixed/new_root"
+    @test rebase_json_pointer("/root/path", "/root/path") == ""
+    @test rebase_json_pointer("/root/path", "/root", "/alternate") == "/alternate/path"
+    @test_throws ArgumentError rebase_json_pointer("/root/path", "/other")
+end
+
 @testset "example_cat_registry" begin
     registry = example_cat_registry()
 

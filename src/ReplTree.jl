@@ -17,7 +17,8 @@ export json_pointer_segments,
        child_pointer,
        CallableType,
        set_menu_branch_callback!,
-       set_branch_callbacks!
+       set_branch_callbacks!,
+       rebase_json_pointer
 
 
 include("utilities.jl")
@@ -50,6 +51,40 @@ function pointer_from_segments(segments::AbstractVector{<:AbstractString})
     isempty(segments) && return ""
     escaped = map(escape_json_pointer_segment, segments)
     return "/" * join(escaped, "/")
+end
+
+"""
+    rebase_json_pointer(pointer::AbstractString, from_prefix::AbstractString,
+                        to_prefix::AbstractString="") -> String
+
+Rebase `pointer` from the `from_prefix` branch to `to_prefix`. Both
+prefixes may be `""` or `"/"` to represent the document root. Throws an
+`ArgumentError` when `pointer` does not lie under `from_prefix`.
+"""
+function rebase_json_pointer(pointer::AbstractString, from_prefix::AbstractString,
+                             to_prefix::AbstractString="")
+    pointer_segments = pointer == "" ? String[] : json_pointer_segments(pointer)
+
+    from_prefix = normalize_branch_pointer(from_prefix)
+    to_prefix = normalize_branch_pointer(to_prefix)
+
+    from_segments = from_prefix == "" ? String[] : json_pointer_segments(from_prefix)
+    to_segments = to_prefix == "" ? String[] : json_pointer_segments(to_prefix)
+
+    length(pointer_segments) >= length(from_segments) ||
+        throw(ArgumentError("Pointer '$pointer' is not a descendant of prefix '$from_prefix'"))
+
+    if !isempty(from_segments) && pointer_segments[1:length(from_segments)] != from_segments
+        throw(ArgumentError("Pointer '$pointer' is not a descendant of prefix '$from_prefix'"))
+    end
+
+    remaining_segments = length(pointer_segments) > length(from_segments) ?
+        pointer_segments[(length(from_segments)+1):end] : String[]
+
+    rebased_segments = String[]
+    append!(rebased_segments, to_segments)
+    append!(rebased_segments, remaining_segments)
+    return pointer_from_segments(rebased_segments)
 end
 
 function sanitize_symbol(segment::AbstractString, used::Set{Symbol})
