@@ -549,6 +549,7 @@ merge_registry(menu::MenuBranch, additions::MenuBranch) =
 function merge_registry!(menu::MenuBranch, branch_pointer::AbstractString,
                          additions::AbstractDict{<:AbstractString})
     branch_pointer = normalize_branch_pointer(branch_pointer)
+    callbacks = collect_menu_callbacks(menu)
     base_registry = menu_to_any_registry(menu)
     merge_registry!(base_registry, branch_pointer, additions)
     merged_menu = registry_to_menu(base_registry)
@@ -556,6 +557,7 @@ function merge_registry!(menu::MenuBranch, branch_pointer::AbstractString,
     menu.order = merged_menu.order
     menu.children = merged_menu.children
     menu.segment_lookup = merged_menu.segment_lookup
+    restore_menu_callbacks!(menu, callbacks)
     return menu
 end
 
