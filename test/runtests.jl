@@ -537,6 +537,19 @@ end
 
     merge_registry!(root_menu, Dict("/epsilon" => () -> 5))
     @test root_menu.epsilon() == 5
+
+    menu_with_callbacks = registry_to_menu(Dict(
+        "/branch/leaf" => () -> :leaf,
+        "/branch/another" => () -> :another,
+    ))
+    recorder = BranchRecorder(Any[])
+    set_branch_callbacks!(menu_with_callbacks, "/branch", recorder)
+
+    merged_callbacks = merge_registry(menu_with_callbacks, "/branch", Dict("/extra" => () -> :extra))
+
+    merged_callbacks.branch()
+    @test length(recorder.calls) == 1
+    @test recorder.calls[1][1] == "/branch"
 end
 
 @testset "example_kitchen_combo_registry" begin

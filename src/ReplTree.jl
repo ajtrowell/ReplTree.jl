@@ -406,6 +406,26 @@ function set_branch_callbacks!(root::MenuBranch, branch_pointer::AbstractString,
     return root
 end
 
+function collect_menu_callbacks(branch::MenuBranch, store::Dict{String, Any}=Dict{String, Any}())
+    store[branch.pointer] = branch.callback
+    for child in values(branch.children)
+        child isa MenuBranch || continue
+        collect_menu_callbacks(child, store)
+    end
+    return store
+end
+
+function restore_menu_callbacks!(branch::MenuBranch, callbacks::Dict{String, Any})
+    if haskey(callbacks, branch.pointer)
+        set_menu_branch_callback!(branch, callbacks[branch.pointer])
+    end
+    for child in values(branch.children)
+        child isa MenuBranch || continue
+        restore_menu_callbacks!(child, callbacks)
+    end
+    return branch
+end
+
 """
     registry_to_menu(registry::AbstractDict{<:AbstractString}) -> MenuBranch
 
@@ -507,9 +527,11 @@ end
 function merge_registry(menu::MenuBranch, branch_pointer::AbstractString,
                         additions::AbstractDict{<:AbstractString})
     branch_pointer = normalize_branch_pointer(branch_pointer)
+    callbacks = collect_menu_callbacks(menu)
     base_registry = menu_to_any_registry(menu)
     merged_registry = merge_registry(base_registry, branch_pointer, additions)
-    return registry_to_menu(merged_registry)
+    merged_menu = registry_to_menu(merged_registry)
+    return restore_menu_callbacks!(merged_menu, callbacks)
 end
 
 function merge_registry(menu::MenuBranch, branch_pointer::AbstractString,
