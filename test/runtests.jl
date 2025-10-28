@@ -1,6 +1,6 @@
 using Test
 using ReplTree
-using JSON3
+using JSON
 using Base: redirect_stdout
 
 struct TestFunctor
@@ -340,7 +340,7 @@ end
 end
 
 @testset "generate_registry_from_json" begin
-    json = JSON3.read("""
+    json = JSON.parse("""
         {
             "name": "Whiskers",
             "stats": {
@@ -359,7 +359,7 @@ end
     @test registry["/stats/scores/1"] == "/stats/scores/1"
     @test length(registry) == 4
 
-    scalar = JSON3.read("5")
+    scalar = JSON.parse("5")
     @test_throws ArgumentError generate_registry_from_json(scalar, identity)
 end
 

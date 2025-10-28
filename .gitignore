@@ -1,2 +1,4 @@
 .julia
 *.swp
+Manifest.toml
+.juliaup

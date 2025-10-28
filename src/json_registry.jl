@@ -1,4 +1,4 @@
-using JSON3
+using JSON
 
 """
     generate_registry_from_json(json_data, callback::Function) -> Dict{String, Any}
@@ -6,24 +6,24 @@ using JSON3
 Traverse `json_data`, collect every scalar leaf, and return a registry
 mapping JSON Pointer strings to the result of `callback(pointer)`.
 
-`json_data` should be a `JSON3.Object` or `JSON3.Array`. Branch pointers
+`json_data` should be a `JSON.Object` or `JSON.Array`. Branch pointers
 are constructed according to RFC 6901, with array indices encoded as
 zero-based decimal strings.
 
 Throws an `ArgumentError` when the root value is a scalar, since
 registries cannot contain a root leaf pointer.
 """
-function generate_registry_from_json(json_data::Union{JSON3.Object, JSON3.Array}, callback::Function)::Dict{String, Any}
+function generate_registry_from_json(json_data::Union{JSON.Object, JSON.Array}, callback::Function)::Dict{String, Any}
     registry = Dict{String, Any}()
     collect_json_leaves!(registry, json_data, callback, String[])
     return registry
 end
 
 function generate_registry_from_json(json_data, ::Function)
-    throw(ArgumentError("json_data must be a JSON3.Object or JSON3.Array"))
+    throw(ArgumentError("json_data must be a JSON.Object or JSON.Array"))
 end
 
-function collect_json_leaves!(registry::Dict{String, Any}, node::JSON3.Object, callback::Function, segments::Vector{String})
+function collect_json_leaves!(registry::Dict{String, Any}, node::JSON.Object, callback::Function, segments::Vector{String})
     for (key, value) in pairs(node)
         push!(segments, string(key))
         collect_json_leaves!(registry, value, callback, segments)
@@ -32,7 +32,7 @@ function collect_json_leaves!(registry::Dict{String, Any}, node::JSON3.Object, c
     return registry
 end
 
-function collect_json_leaves!(registry::Dict{String, Any}, node::JSON3.Array, callback::Function, segments::Vector{String})
+function collect_json_leaves!(registry::Dict{String, Any}, node::JSON.Array, callback::Function, segments::Vector{String})
     index = 0
     for value in node
         push!(segments, string(index))
